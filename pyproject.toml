@@ -3,7 +3,7 @@ name = "resume-ats-matcher"
 version = "0.1.0"
 description = "Human-in-the-loop resume ATS matcher and editor"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "beautifulsoup4>=4.12.3",
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl",
