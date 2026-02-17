@@ -1,24 +1,36 @@
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
 
-from ats_matcher.models import PhraseMatch, ResumeData
+from ats_matcher.models import PhraseMatch, RequirementMatch, ResumeData
 from ats_matcher.utils import normalize_text
 
 
 class MatchingEngine:
-    def __init__(self, semantic_threshold: float = 0.6) -> None:
-        self.semantic_threshold = semantic_threshold
+    def __init__(
+        self,
+        skill_strong_threshold: float = 0.7,
+        skill_weak_threshold: float = 0.55,
+        requirement_strong_threshold: float = 0.7,
+        requirement_weak_threshold: float = 0.55,
+    ) -> None:
+        self.skill_strong_threshold = skill_strong_threshold
+        self.skill_weak_threshold = skill_weak_threshold
+        self.requirement_strong_threshold = requirement_strong_threshold
+        self.requirement_weak_threshold = requirement_weak_threshold
 
-    def match_phrases(
+    def match_skill_terms(
         self,
         phrases: List[str],
         resume: ResumeData,
         phrase_embeddings: np.ndarray,
         bullet_embeddings: np.ndarray,
         bullet_ids: List[str],
+        matching_strategy: str = "embedding",
+        rerank_top_k: int = 15,
     ) -> List[PhraseMatch]:
         matches: List[PhraseMatch] = []
         bullet_texts = {
@@ -27,6 +39,7 @@ class MatchingEngine:
         normalized_bullets = {
             bullet_id: normalize_text(text) for bullet_id, text in bullet_texts.items()
         }
+        vectorizer, matrix = self._build_tfidf(bullet_texts.values())
 
         for idx, phrase in enumerate(phrases):
             normalized_phrase = normalize_text(phrase)
@@ -62,14 +75,26 @@ class MatchingEngine:
                 continue
 
             phrase_vec = phrase_embeddings[idx : idx + 1]
-            sims = np.dot(bullet_embeddings, phrase_vec.T).reshape(-1)
-            best_idx = int(np.argmax(sims))
-            best_score = float(sims[best_idx])
-            best_bullet_id = bullet_ids[best_idx]
-            evidence_text = bullet_texts[best_bullet_id]
+            candidate_indices = self._candidate_indices(
+                phrase,
+                matching_strategy,
+                vectorizer,
+                matrix,
+                rerank_top_k,
+            )
 
-            if best_score >= self.semantic_threshold:
-                match_type = "semantic"
+            best_score, best_bullet_id = self._best_semantic_match(
+                phrase_vec,
+                bullet_embeddings,
+                bullet_ids,
+                candidate_indices,
+            )
+            evidence_text = bullet_texts[best_bullet_id] if best_bullet_id else None
+
+            if best_score >= self.skill_strong_threshold:
+                match_type = "semantic_strong"
+            elif best_score >= self.skill_weak_threshold:
+                match_type = "semantic_weak"
             else:
                 match_type = "missing"
                 best_bullet_id = None
@@ -87,3 +112,132 @@ class MatchingEngine:
             )
 
         return matches
+
+    def match_requirements(
+        self,
+        requirements: List[str],
+        resume: ResumeData,
+        requirement_embeddings: np.ndarray,
+        bullet_embeddings: np.ndarray,
+        bullet_ids: List[str],
+        matching_strategy: str = "embedding",
+        rerank_top_k: int = 15,
+    ) -> List[RequirementMatch]:
+        matches: List[RequirementMatch] = []
+        bullet_texts = {
+            bullet_id: resume.bullet_index[bullet_id].text for bullet_id in bullet_ids
+        }
+        vectorizer, matrix = self._build_tfidf(bullet_texts.values())
+
+        for idx, requirement in enumerate(requirements):
+            if bullet_embeddings.size == 0:
+                matches.append(
+                    RequirementMatch(
+                        requirement=requirement,
+                        match_type="missing",
+                        similarity=0.0,
+                        evidence_bullet_id=None,
+                        evidence_text=None,
+                    )
+                )
+                continue
+
+            req_vec = requirement_embeddings[idx : idx + 1]
+            candidate_indices = self._candidate_indices(
+                requirement,
+                matching_strategy,
+                vectorizer,
+                matrix,
+                rerank_top_k,
+            )
+
+            best_score, best_bullet_id = self._best_semantic_match(
+                req_vec,
+                bullet_embeddings,
+                bullet_ids,
+                candidate_indices,
+            )
+            evidence_text = bullet_texts[best_bullet_id] if best_bullet_id else None
+
+            if best_score >= self.requirement_strong_threshold:
+                match_type = "strong"
+            elif best_score >= self.requirement_weak_threshold:
+                match_type = "weak"
+            else:
+                match_type = "missing"
+                best_bullet_id = None
+                evidence_text = None
+                best_score = 0.0
+
+            matches.append(
+                RequirementMatch(
+                    requirement=requirement,
+                    match_type=match_type,
+                    similarity=best_score,
+                    evidence_bullet_id=best_bullet_id,
+                    evidence_text=evidence_text,
+                )
+            )
+
+        return matches
+
+    def _candidate_indices(
+        self,
+        query: str,
+        matching_strategy: str,
+        vectorizer: Optional[TfidfVectorizer],
+        matrix,
+        rerank_top_k: int,
+    ) -> Optional[List[int]]:
+        if matching_strategy != "tfidf_rerank":
+            return None
+        if vectorizer is None or matrix is None:
+            return None
+        if rerank_top_k <= 0:
+            return None
+        return self._tfidf_top_indices(query, vectorizer, matrix, rerank_top_k)
+
+    def _best_semantic_match(
+        self,
+        query_vec: np.ndarray,
+        bullet_embeddings: np.ndarray,
+        bullet_ids: List[str],
+        candidate_indices: Optional[List[int]],
+    ) -> Tuple[float, Optional[str]]:
+        if candidate_indices is None:
+            sims = np.dot(bullet_embeddings, query_vec.T).reshape(-1)
+            best_idx = int(np.argmax(sims))
+            return float(sims[best_idx]), bullet_ids[best_idx]
+
+        if not candidate_indices:
+            return 0.0, None
+
+        subset_embeddings = bullet_embeddings[candidate_indices]
+        sims = np.dot(subset_embeddings, query_vec.T).reshape(-1)
+        best_local = int(np.argmax(sims))
+        best_score = float(sims[best_local])
+        best_idx = candidate_indices[best_local]
+        return best_score, bullet_ids[best_idx]
+
+    def _build_tfidf(
+        self, texts: List[str]
+    ) -> Tuple[Optional[TfidfVectorizer], Optional[np.ndarray]]:
+        text_list = list(texts)
+        if not text_list:
+            return None, None
+        vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
+        matrix = vectorizer.fit_transform(text_list)
+        return vectorizer, matrix
+
+    def _tfidf_top_indices(
+        self,
+        query: str,
+        vectorizer: TfidfVectorizer,
+        matrix,
+        top_k: int,
+    ) -> List[int]:
+        query_vec = vectorizer.transform([query])
+        scores = (matrix @ query_vec.T).toarray().reshape(-1)
+        top_k = min(top_k, len(scores))
+        ranked = np.argsort(-scores)[:top_k]
+        return [int(idx) for idx in ranked]

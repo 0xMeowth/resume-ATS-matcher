@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import List
 
 import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 def select_phrases_mmr(
@@ -41,3 +42,22 @@ def select_phrases_mmr(
         candidates.remove(best_idx)
 
     return selected
+
+
+def rank_phrases_tfidf(
+    phrases: List[str],
+    document: str,
+    max_phrases: int,
+) -> List[int]:
+    if not phrases:
+        return []
+
+    max_phrases = max(1, min(max_phrases, len(phrases)))
+    vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
+    corpus = [document] + phrases
+    matrix = vectorizer.fit_transform(corpus)
+    doc_vec = matrix[0]
+    phrase_vecs = matrix[1:]
+    scores = (phrase_vecs @ doc_vec.T).toarray().reshape(-1)
+    ranked = np.argsort(-scores)
+    return [int(idx) for idx in ranked[:max_phrases]]

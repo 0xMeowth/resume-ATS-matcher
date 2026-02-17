@@ -11,10 +11,7 @@ from ats_matcher.utils import dedupe_preserve_order, normalize_text
 
 
 class JDParser:
-    def __init__(
-        self, max_phrases: int = 120, model_name: str = "en_core_web_sm"
-    ) -> None:
-        self.max_phrases = max_phrases
+    def __init__(self, model_name: str = "en_core_web_sm") -> None:
         self.model_name = model_name
         self._nlp = None
 
@@ -29,7 +26,7 @@ class JDParser:
             return self._fetch_url(jd_url)
         return jd_text or ""
 
-    def extract_phrases(self, jd_text: str) -> List[str]:
+    def extract_skill_terms(self, jd_text: str) -> List[str]:
         doc = self.nlp(jd_text)
         stopwords = self.nlp.Defaults.stop_words
         phrases: List[str] = []
@@ -56,6 +53,21 @@ class JDParser:
 
         phrases = dedupe_preserve_order(phrases)
         return phrases
+
+    def extract_requirements(self, jd_text: str) -> List[str]:
+        doc = self.nlp(jd_text)
+        requirements: List[str] = []
+        for sent in doc.sents:
+            sentence = re.sub(r"\s+", " ", sent.text).strip()
+            if not sentence:
+                continue
+            token_count = len([t for t in sent if not t.is_punct])
+            if token_count < 6:
+                continue
+            requirements.append(sentence)
+
+        requirements = dedupe_preserve_order(requirements)
+        return requirements
 
     def _fetch_url(self, url: str) -> str:
         response = requests.get(url, timeout=15)
