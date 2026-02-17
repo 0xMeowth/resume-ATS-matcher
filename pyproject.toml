@@ -1,0 +1,19 @@
+[project]
+name = "resume-ats-matcher"
+version = "0.1.0"
+description = "Human-in-the-loop resume ATS matcher and editor"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "beautifulsoup4>=4.12.3",
+    "numpy>=1.26.4",
+    "pandas>=2.2.2",
+    "python-docx>=1.1.2",
+    "requests>=2.32.3",
+    "sentence-transformers>=3.0.1",
+    "spacy>=3.7.5",
+    "streamlit>=1.36.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
