@@ -1,20 +1,16 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import Dict
 
-sys.path.append("src")
+ROOT_DIR = Path(__file__).resolve().parent
+SRC_DIR = ROOT_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 import pandas as pd
 import streamlit as st
-
-from ats_matcher.embedding_engine import EmbeddingEngine
-from ats_matcher.exporter import Exporter
-from ats_matcher.jd_parser import JDParser
-from ats_matcher.matching_engine import MatchingEngine
-from ats_matcher.phrase_ranker import rank_phrases_tfidf, select_phrases_mmr
-from ats_matcher.resume_parser import ResumeParser
-from ats_matcher.rewrite_engine import RewriteEngine
 
 
 st.set_page_config(page_title="Resume ATS Matcher v0.1", layout="wide")
@@ -97,6 +93,8 @@ resume_file = st.file_uploader(
     "Resume (.docx)", type=["docx"], key=f"resume_upload_{uploader_key}"
 )
 if resume_file:
+    from ats_matcher.resume_parser import ResumeParser
+
     resume_bytes = resume_file.getvalue()
     parser = ResumeParser()
     resume_data = parser.parse(resume_bytes)
@@ -123,6 +121,11 @@ jd_text = st.text_area(
 )
 
 if st.button("Analyze JD", disabled="resume_data" not in st.session_state):
+    from ats_matcher.embedding_engine import EmbeddingEngine
+    from ats_matcher.jd_parser import JDParser
+    from ats_matcher.matching_engine import MatchingEngine
+    from ats_matcher.phrase_ranker import rank_phrases_tfidf, select_phrases_mmr
+
     jd_parser = JDParser()
     raw_text = jd_parser.load_text(jd_text, jd_url)
     if not raw_text.strip():
@@ -254,6 +257,8 @@ if "skill_matches" in st.session_state:
             st.dataframe(debug_df, use_container_width=True)
 
     if st.button("Generate rewrite suggestions"):
+        from ats_matcher.rewrite_engine import RewriteEngine
+
         rewrite_engine = RewriteEngine()
         suggestions = rewrite_engine.generate(
             skill_matches, st.session_state["resume_data"]
@@ -296,6 +301,8 @@ if "rewrite_suggestions" in st.session_state:
         st.success(f"Ready to apply {len(accepted_changes)} changes")
 
     if st.button("Apply accepted changes"):
+        from ats_matcher.exporter import Exporter
+
         exporter = Exporter()
         updated_docx = exporter.apply_changes(
             st.session_state["resume_bytes"],
