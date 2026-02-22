@@ -22,12 +22,15 @@ domain_stoplist:
   - background
   - competency
   - domain
+  - discipline
   - environment
   - experience
   - exposure
   - function
   - knowledge
   - minimum
+  - prior
+  - preferred
   - relevant
   - scope
   - skill
@@ -85,7 +88,9 @@ discourse_markers:
   - such as
   - ie
   - i.e.
+  - i.e
   - eg
+  - e.g
   - e.g.
   - including
   - for example
