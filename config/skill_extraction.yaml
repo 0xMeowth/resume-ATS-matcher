@@ -43,13 +43,17 @@ single_token_allowlist:
   - api
   - aws
   - bi
+  - blockchain
   - c/c++
   - ci
   - cicd
   - ci/cd
   - confluence
   - crm
+  - crypto
+  - cryptocurrency
   - docker
+  - database
   - etl
   - excel
   - fpa
@@ -66,6 +70,7 @@ single_token_allowlist:
   - postgresql
   - powerbi
   - pyspark
+  - python
   - sap
   - scala
   - snowflake
@@ -73,6 +78,7 @@ single_token_allowlist:
   - sql
   - tableau
   - vba
+  - web3
 
 discourse_markers:
   - such as

@@ -240,7 +240,17 @@ if "skill_matches" in st.session_state:
     debug_events = st.session_state.get("skill_extraction_debug", [])
     if debug_events:
         with st.expander("Skill extraction debug"):
+            debug_view = st.radio(
+                "Debug view",
+                ["Actionable drops", "Full trace"],
+                horizontal=True,
+            )
             debug_df = pd.DataFrame(debug_events)
+            if debug_view == "Actionable drops":
+                debug_df = debug_df[
+                    (debug_df["action"] == "dropped")
+                    & (debug_df["source"] != "single_token")
+                ]
             st.dataframe(debug_df, use_container_width=True)
 
     if st.button("Generate rewrite suggestions"):

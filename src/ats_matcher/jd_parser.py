@@ -151,6 +151,7 @@ class JDParser:
             if "\n" in doc.text[ent.start_char : ent.end_char]:
                 self._record_debug(
                     debug_events,
+                    phase="extraction",
                     source="esco_entity",
                     candidate=ent.text,
                     action="dropped",
@@ -164,6 +165,7 @@ class JDParser:
             if rejection_reason:
                 self._record_debug(
                     debug_events,
+                    phase="extraction",
                     source="esco_entity",
                     candidate=candidate,
                     action="dropped",
@@ -173,6 +175,7 @@ class JDParser:
             phrases.append(candidate)
             self._record_debug(
                 debug_events,
+                phase="extraction",
                 source="esco_entity",
                 candidate=candidate,
                 action="kept",
@@ -197,6 +200,7 @@ class JDParser:
                 if rejection_reason:
                     self._record_debug(
                         debug_events,
+                        phase="extraction",
                         source="noun_chunk",
                         candidate=candidate,
                         action="dropped",
@@ -206,6 +210,7 @@ class JDParser:
                 phrases.append(candidate)
                 self._record_debug(
                     debug_events,
+                    phase="extraction",
                     source="noun_chunk",
                     candidate=candidate,
                     action="kept",
@@ -233,6 +238,7 @@ class JDParser:
             if normalize_text(candidate) in self.domain_stoplist:
                 self._record_debug(
                     debug_events,
+                    phase="extraction",
                     source="single_token",
                     candidate=candidate,
                     action="dropped",
@@ -243,6 +249,7 @@ class JDParser:
                 phrases.append(candidate)
                 self._record_debug(
                     debug_events,
+                    phase="extraction",
                     source="single_token",
                     candidate=candidate,
                     action="kept",
@@ -251,6 +258,7 @@ class JDParser:
             else:
                 self._record_debug(
                     debug_events,
+                    phase="extraction",
                     source="single_token",
                     candidate=candidate,
                     action="dropped",
@@ -424,6 +432,7 @@ class JDParser:
                 if re.search(rf"\b{re.escape(short_norm)}\b", long_norm):
                     self._record_debug(
                         debug_events,
+                        phase="dedupe",
                         source=source,
                         candidate=phrase,
                         action="dropped",
@@ -438,6 +447,7 @@ class JDParser:
     def _record_debug(
         self,
         debug_events: Optional[List[Dict[str, str]]],
+        phase: str,
         source: str,
         candidate: str,
         action: str,
@@ -447,6 +457,7 @@ class JDParser:
             return
         debug_events.append(
             {
+                "phase": phase,
                 "source": source,
                 "candidate": candidate,
                 "action": action,
