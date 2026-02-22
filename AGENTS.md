@@ -69,7 +69,7 @@ No tests are present today, but agents should use `pytest` conventions.
 - Run one test function:
   - `uv run pytest tests/test_matching_engine.py::test_exact_match`
 - Run tests by keyword:
-  - `uv run pytest -k "requirement and missing"`
+  - `uv run pytest -k "skill and missing"`
 - Stop on first failure:
   - `uv run pytest -x`
 
@@ -126,7 +126,7 @@ Follow existing patterns in `src/ats_matcher/`.
 - Modules/functions/variables: `snake_case`.
 - Classes/dataclasses: `PascalCase`.
 - Constants: `UPPER_SNAKE_CASE`.
-- Keep names domain-specific (`skill_matches`, `requirement_matches`).
+- Keep names domain-specific (`skill_matches`, `rewrite_suggestions`).
 
 ### Error Handling
 

@@ -41,15 +41,6 @@ class PhraseMatch:
 
 
 @dataclass
-class RequirementMatch:
-    requirement: str
-    match_type: str
-    similarity: float
-    evidence_bullet_id: Optional[str]
-    evidence_text: Optional[str]
-
-
-@dataclass
 class RewriteSuggestion:
     bullet_id: str
     phrase: str

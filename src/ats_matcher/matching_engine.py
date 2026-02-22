@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from ats_matcher.models import PhraseMatch, RequirementMatch, ResumeData
+from ats_matcher.models import PhraseMatch, ResumeData
 from ats_matcher.utils import normalize_text
 
 
@@ -14,13 +14,9 @@ class MatchingEngine:
         self,
         skill_strong_threshold: float = 0.7,
         skill_weak_threshold: float = 0.55,
-        requirement_strong_threshold: float = 0.7,
-        requirement_weak_threshold: float = 0.55,
     ) -> None:
         self.skill_strong_threshold = skill_strong_threshold
         self.skill_weak_threshold = skill_weak_threshold
-        self.requirement_strong_threshold = requirement_strong_threshold
-        self.requirement_weak_threshold = requirement_weak_threshold
 
     def match_skill_terms(
         self,
@@ -104,74 +100,6 @@ class MatchingEngine:
             matches.append(
                 PhraseMatch(
                     phrase=phrase,
-                    match_type=match_type,
-                    similarity=best_score,
-                    evidence_bullet_id=best_bullet_id,
-                    evidence_text=evidence_text,
-                )
-            )
-
-        return matches
-
-    def match_requirements(
-        self,
-        requirements: List[str],
-        resume: ResumeData,
-        requirement_embeddings: np.ndarray,
-        bullet_embeddings: np.ndarray,
-        bullet_ids: List[str],
-        matching_strategy: str = "embedding",
-        rerank_top_k: int = 15,
-    ) -> List[RequirementMatch]:
-        matches: List[RequirementMatch] = []
-        bullet_texts = {
-            bullet_id: resume.bullet_index[bullet_id].text for bullet_id in bullet_ids
-        }
-        vectorizer, matrix = self._build_tfidf(bullet_texts.values())
-
-        for idx, requirement in enumerate(requirements):
-            if bullet_embeddings.size == 0:
-                matches.append(
-                    RequirementMatch(
-                        requirement=requirement,
-                        match_type="missing",
-                        similarity=0.0,
-                        evidence_bullet_id=None,
-                        evidence_text=None,
-                    )
-                )
-                continue
-
-            req_vec = requirement_embeddings[idx : idx + 1]
-            candidate_indices = self._candidate_indices(
-                requirement,
-                matching_strategy,
-                vectorizer,
-                matrix,
-                rerank_top_k,
-            )
-
-            best_score, best_bullet_id = self._best_semantic_match(
-                req_vec,
-                bullet_embeddings,
-                bullet_ids,
-                candidate_indices,
-            )
-            evidence_text = bullet_texts[best_bullet_id] if best_bullet_id else None
-
-            if best_score >= self.requirement_strong_threshold:
-                match_type = "strong"
-            elif best_score >= self.requirement_weak_threshold:
-                match_type = "weak"
-            else:
-                match_type = "missing"
-                best_bullet_id = None
-                evidence_text = None
-                best_score = 0.0
-
-            matches.append(
-                RequirementMatch(
-                    requirement=requirement,
                     match_type=match_type,
                     similarity=best_score,
                     evidence_bullet_id=best_bullet_id,

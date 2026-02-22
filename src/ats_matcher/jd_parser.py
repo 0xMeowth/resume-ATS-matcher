@@ -89,21 +89,6 @@ class JDParser:
             "single_token_skills": single_token_skills,
         }
 
-    def extract_requirements(self, jd_text: str) -> List[str]:
-        doc = self.nlp(jd_text)
-        requirements: List[str] = []
-        for sent in doc.sents:
-            sentence = re.sub(r"\s+", " ", sent.text).strip()
-            if not sentence:
-                continue
-            token_count = len([t for t in sent if not t.is_punct])
-            if token_count < 6:
-                continue
-            requirements.append(sentence)
-
-        requirements = dedupe_preserve_order(requirements)
-        return requirements
-
     def _fetch_url(self, url: str) -> str:
         response = requests.get(url, timeout=15)
         response.raise_for_status()

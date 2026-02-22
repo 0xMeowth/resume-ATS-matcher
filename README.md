@@ -21,9 +21,8 @@ uv run streamlit run app.py
 - Upload .docx resume, parse sections/roles/bullets
 - Paste JD text or provide URL
 - Extract skill terms, rank with MMR, embed, and classify skill matches
-- Extract requirement sentences and match against resume bullets
-- Coverage report split into skill and requirement sections with evidence
-- Separate strong/weak thresholds for skills and requirements
-- Selectable ranking and matching strategies (MMR, TF-IDF, hybrid)
+- Skill coverage report with evidence
+- Configurable strong/weak thresholds for skill matching
+- Selectable skill ranking and matching strategies (MMR, TF-IDF, hybrid)
 - Human-in-the-loop edits with explicit accept
 - Export tailored .docx

@@ -23,7 +23,6 @@ st.set_page_config(page_title="Resume ATS Matcher v0.1", layout="wide")
 def clear_analysis_state() -> None:
     for key in [
         "skill_matches",
-        "requirement_matches",
         "rewrite_suggestions",
         "accepted_changes",
         "updated_docx",
@@ -50,19 +49,9 @@ with st.sidebar:
     st.markdown("**Skill term thresholds**")
     skill_strong_threshold = st.slider("Skill strong match", 0.5, 0.95, 0.7, 0.05)
     skill_weak_threshold = st.slider("Skill weak match", 0.3, 0.9, 0.55, 0.05)
-    st.markdown("**Requirement thresholds**")
-    requirement_strong_threshold = st.slider(
-        "Requirement strong match", 0.5, 0.95, 0.7, 0.05
-    )
-    requirement_weak_threshold = st.slider(
-        "Requirement weak match", 0.3, 0.9, 0.55, 0.05
-    )
     st.markdown("**Limits**")
     max_skill_terms = st.slider(
         "Max skill terms", 50, 200, 120, 10, on_change=clear_analysis_state
-    )
-    max_requirements = st.slider(
-        "Max requirement sentences", 10, 120, 50, 5, on_change=clear_analysis_state
     )
 
     st.markdown("**Ranking strategy**")
@@ -83,16 +72,8 @@ with st.sidebar:
         ["Embedding", "TF-IDF shortlist + Embedding"],
         on_change=clear_analysis_state,
     )
-    requirement_matching = st.selectbox(
-        "Requirement matching",
-        ["Embedding", "TF-IDF shortlist + Embedding"],
-        on_change=clear_analysis_state,
-    )
     rerank_top_k = None
-    if (
-        skill_matching == "TF-IDF shortlist + Embedding"
-        or requirement_matching == "TF-IDF shortlist + Embedding"
-    ):
+    if skill_matching == "TF-IDF shortlist + Embedding":
         rerank_top_k = st.slider(
             "TF-IDF shortlist size", 5, 50, 15, 5, on_change=clear_analysis_state
         )
@@ -140,7 +121,6 @@ if st.button("Analyze JD", disabled="resume_data" not in st.session_state):
         st.warning("Provide JD text or a valid URL before analyzing.")
         st.stop()
     skill_candidates = jd_parser.extract_skill_terms(raw_text)
-    requirements = jd_parser.extract_requirements(raw_text)
 
     resume_data = st.session_state["resume_data"]
     bullet_ids = list(resume_data.bullet_index.keys())
@@ -182,15 +162,11 @@ if st.button("Analyze JD", disabled="resume_data" not in st.session_state):
 
     skill_terms = [skill_candidates[i] for i in selected_indices]
     skill_embeddings = skill_embeddings[selected_indices]
-    requirements = requirements[:max_requirements]
-    requirement_embeddings = embedding_engine.embed(requirements)
     bullet_embeddings = embedding_engine.embed(bullet_texts)
 
     matcher = MatchingEngine(
         skill_strong_threshold=skill_strong_threshold,
         skill_weak_threshold=skill_weak_threshold,
-        requirement_strong_threshold=requirement_strong_threshold,
-        requirement_weak_threshold=requirement_weak_threshold,
     )
     skill_matches = matcher.match_skill_terms(
         phrases=skill_terms,
@@ -203,26 +179,13 @@ if st.button("Analyze JD", disabled="resume_data" not in st.session_state):
         else "embedding",
         rerank_top_k=rerank_top_k or 15,
     )
-    requirement_matches = matcher.match_requirements(
-        requirements=requirements,
-        resume=resume_data,
-        requirement_embeddings=requirement_embeddings,
-        bullet_embeddings=bullet_embeddings,
-        bullet_ids=bullet_ids,
-        matching_strategy="tfidf_rerank"
-        if requirement_matching == "TF-IDF shortlist + Embedding"
-        else "embedding",
-        rerank_top_k=rerank_top_k or 15,
-    )
 
     st.session_state["jd_skill_terms"] = skill_terms
-    st.session_state["jd_requirements"] = requirements
     st.session_state["skill_matches"] = skill_matches
-    st.session_state["requirement_matches"] = requirement_matches
     st.success("Analysis complete")
 
 
-if "skill_matches" in st.session_state and "requirement_matches" in st.session_state:
+if "skill_matches" in st.session_state:
     st.subheader("3) Coverage report")
 
     st.markdown("**Skill coverage**")
@@ -260,33 +223,6 @@ if "skill_matches" in st.session_state and "requirement_matches" in st.session_s
         f"{exact_count} | Strong semantic: {strong_count} | Weak semantic: {weak_count} | "
         f"Missing: {missing_count}"
     )
-
-    st.markdown("**Requirement coverage**")
-    requirement_matches = st.session_state["requirement_matches"]
-    requirement_rows = []
-    for match in requirement_matches:
-        requirement_rows.append(
-            {
-                "requirement": match.requirement,
-                "coverage": match.match_type,
-                "similarity": round(match.similarity, 3),
-                "evidence": match.evidence_text or "",
-            }
-        )
-    requirement_df = pd.DataFrame(requirement_rows)
-    if not requirement_df.empty:
-        req_order = {"strong": 0, "weak": 1, "missing": 2}
-        requirement_df["_order"] = requirement_df["coverage"].map(
-            lambda x: req_order.get(x, 9)
-        )
-        requirement_df = requirement_df.sort_values(by=["_order"])
-        requirement_df = requirement_df.drop(columns=["_order"])
-    st.dataframe(requirement_df, use_container_width=True)
-
-    req_strong = sum(1 for m in requirement_matches if m.match_type == "strong")
-    req_weak = sum(1 for m in requirement_matches if m.match_type == "weak")
-    req_missing = sum(1 for m in requirement_matches if m.match_type == "missing")
-    st.write(f"Strong: {req_strong} | Weak: {req_weak} | Missing: {req_missing}")
 
     if st.button("Generate rewrite suggestions"):
         rewrite_engine = RewriteEngine()
