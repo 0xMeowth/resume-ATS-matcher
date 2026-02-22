@@ -70,3 +70,18 @@ def test_discourse_marker_is_removed_from_phrase(parser: JDParser) -> None:
 
     assert "e.g. vba" not in normalized
     assert "vba" in normalized
+
+
+def test_allowlisted_short_token_not_marked_too_short(parser: JDParser) -> None:
+    text = "AI systems experience with model deployment"
+    components = parser.extract_skill_components(text, debug=True)
+    debug_events = components.get("debug_events", [])
+
+    ai_too_short_drops = [
+        event
+        for event in debug_events
+        if event.get("candidate", "").lower() == "ai"
+        and event.get("action") == "dropped"
+        and event.get("reason") == "too_short"
+    ]
+    assert not ai_too_short_drops

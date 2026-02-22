@@ -173,13 +173,18 @@ class JDParser:
                 )
                 continue
             phrases.append(candidate)
+            keep_reason = (
+                "kept_allowlisted_short_token"
+                if self._is_allowlisted_short_token(candidate)
+                else "passed"
+            )
             self._record_debug(
                 debug_events,
                 phase="extraction",
                 source="esco_entity",
                 candidate=candidate,
                 action="kept",
-                reason="passed",
+                reason=keep_reason,
             )
         phrases = dedupe_preserve_order(phrases)
         return self._suppress_substrings(
@@ -208,13 +213,18 @@ class JDParser:
                     )
                     continue
                 phrases.append(candidate)
+                keep_reason = (
+                    "kept_allowlisted_short_token"
+                    if self._is_allowlisted_short_token(candidate)
+                    else "passed"
+                )
                 self._record_debug(
                     debug_events,
                     phase="extraction",
                     source="noun_chunk",
                     candidate=candidate,
                     action="kept",
-                    reason="passed",
+                    reason=keep_reason,
                 )
         phrases = dedupe_preserve_order(phrases)
         return self._suppress_substrings(
@@ -349,10 +359,14 @@ class JDParser:
         normalized = normalize_text(candidate)
         if not normalized:
             return "empty_after_normalization"
+
+        tokens = normalized.split()
+        if len(tokens) == 1 and self._allow_single_token(candidate):
+            return None
+
         if len(normalized) < 3:
             return "too_short"
 
-        tokens = normalized.split()
         if normalized in self.domain_stoplist:
             return "domain_stoplist"
         if all(token in self.domain_stoplist for token in tokens):
@@ -376,6 +390,14 @@ class JDParser:
         if uppercase_raw.isupper() and 2 <= len(uppercase_raw) <= 8:
             return True
         return False
+
+    def _is_allowlisted_short_token(self, candidate: str) -> bool:
+        normalized = normalize_text(candidate)
+        if len(normalized) >= 3:
+            return False
+        if len(normalized.split()) != 1:
+            return False
+        return self._allow_single_token(candidate)
 
     def _strip_discourse_markers(self, text: str) -> str:
         if not text:

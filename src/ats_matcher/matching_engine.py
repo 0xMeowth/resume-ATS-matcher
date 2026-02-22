@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -41,7 +42,7 @@ class MatchingEngine:
             normalized_phrase = normalize_text(phrase)
             exact_bullet_id = None
             for bullet_id, bullet_text in normalized_bullets.items():
-                if normalized_phrase and normalized_phrase in bullet_text:
+                if self._contains_exact_phrase(normalized_phrase, bullet_text):
                     exact_bullet_id = bullet_id
                     break
 
@@ -169,3 +170,11 @@ class MatchingEngine:
         top_k = min(top_k, len(scores))
         ranked = np.argsort(-scores)[:top_k]
         return [int(idx) for idx in ranked]
+
+    def _contains_exact_phrase(
+        self, normalized_phrase: str, normalized_bullet: str
+    ) -> bool:
+        if not normalized_phrase or not normalized_bullet:
+            return False
+        pattern = rf"(?<![a-z0-9+/#-]){re.escape(normalized_phrase)}(?![a-z0-9+/#-])"
+        return re.search(pattern, normalized_bullet) is not None

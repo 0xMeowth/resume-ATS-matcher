@@ -54,6 +54,7 @@ single_token_allowlist:
   - cryptocurrency
   - docker
   - database
+  - defi 
   - etl
   - excel
   - fpa
