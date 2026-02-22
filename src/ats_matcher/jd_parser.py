@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 import spacy
@@ -15,6 +16,8 @@ TOOLISH_TOKEN_REGEX = re.compile(
     r"^(c\+\+|c#|\.net|node\.js|react\.js|next\.js|[a-z0-9]+[+#./&-][a-z0-9+#./&-]*)$",
     re.IGNORECASE,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class JDParser:
@@ -62,32 +65,49 @@ class JDParser:
             return self._fetch_url(jd_url)
         return jd_text or ""
 
-    def extract_skill_terms(self, jd_text: str) -> List[str]:
-        components = self.extract_skill_components(jd_text)
-        combined = (
-            components["esco_skills"]
-            + components["noun_chunk_skills"]
-            + components["single_token_skills"]
-        )
-        combined = dedupe_preserve_order(combined)
-        combined = self._suppress_substrings(combined)
-        return combined
+    def extract_skill_terms(self, jd_text: str, debug: bool = False) -> List[str]:
+        components = self.extract_skill_components(jd_text, debug=debug)
+        return components["combined_skills"]
 
-    def extract_skill_components(self, jd_text: str) -> Dict[str, List[str]]:
+    def extract_skill_components(
+        self, jd_text: str, debug: bool = False
+    ) -> Dict[str, Any]:
         """Extract skill candidates from ESCO entities and cleaned noun chunks.
 
         - ESCO entities come from a local EntityRuler loaded once at parser init.
         - Noun chunks are cleaned with light-head stripping to reduce generic terms.
         """
         doc = self.nlp(jd_text)
-        esco_skills = self._extract_esco_entities(doc)
-        noun_chunk_skills = self._extract_clean_noun_chunks(doc)
-        single_token_skills = self._extract_allowlisted_single_tokens(doc)
-        return {
+        debug_events: List[Dict[str, str]] = []
+
+        esco_skills = self._extract_esco_entities(
+            doc, debug_events=debug_events if debug else None
+        )
+        noun_chunk_skills = self._extract_clean_noun_chunks(
+            doc, debug_events=debug_events if debug else None
+        )
+        single_token_skills = self._extract_allowlisted_single_tokens(
+            doc, debug_events=debug_events if debug else None
+        )
+        combined = esco_skills + noun_chunk_skills + single_token_skills
+        combined = dedupe_preserve_order(combined)
+        combined = self._suppress_substrings(
+            combined,
+            debug_events=debug_events if debug else None,
+            source="combined",
+        )
+
+        result: Dict[str, Any] = {
             "esco_skills": esco_skills,
             "noun_chunk_skills": noun_chunk_skills,
             "single_token_skills": single_token_skills,
+            "combined_skills": combined,
         }
+        if debug:
+            for event in debug_events:
+                logger.info("skill_extraction_event: %s", event)
+            result["debug_events"] = debug_events
+        return result
 
     def _fetch_url(self, url: str) -> str:
         response = requests.get(url, timeout=15)
@@ -121,35 +141,86 @@ class JDParser:
         )
         ruler.add_patterns(build_entity_ruler_patterns(phrases))
 
-    def _extract_esco_entities(self, doc) -> List[str]:
+    def _extract_esco_entities(
+        self, doc, debug_events: Optional[List[Dict[str, str]]] = None
+    ) -> List[str]:
         phrases: List[str] = []
         for ent in doc.ents:
             if ent.label_ != "ESCO_SKILL":
                 continue
             if "\n" in doc.text[ent.start_char : ent.end_char]:
+                self._record_debug(
+                    debug_events,
+                    source="esco_entity",
+                    candidate=ent.text,
+                    action="dropped",
+                    reason="crosses_newline",
+                )
                 continue
             candidate = self._normalize_candidate(ent.text)
             if not candidate:
                 continue
-            if self._reject_candidate(candidate):
+            rejection_reason = self._candidate_rejection_reason(candidate)
+            if rejection_reason:
+                self._record_debug(
+                    debug_events,
+                    source="esco_entity",
+                    candidate=candidate,
+                    action="dropped",
+                    reason=rejection_reason,
+                )
                 continue
             phrases.append(candidate)
+            self._record_debug(
+                debug_events,
+                source="esco_entity",
+                candidate=candidate,
+                action="kept",
+                reason="passed",
+            )
         phrases = dedupe_preserve_order(phrases)
-        return self._suppress_substrings(phrases)
+        return self._suppress_substrings(
+            phrases,
+            debug_events=debug_events,
+            source="esco_entity",
+        )
 
-    def _extract_clean_noun_chunks(self, doc) -> List[str]:
+    def _extract_clean_noun_chunks(
+        self, doc, debug_events: Optional[List[Dict[str, str]]] = None
+    ) -> List[str]:
         phrases: List[str] = []
         for chunk in doc.noun_chunks:
             for candidate in self._clean_noun_chunk_candidates(chunk):
                 if not candidate:
                     continue
-                if self._reject_candidate(candidate):
+                rejection_reason = self._candidate_rejection_reason(candidate)
+                if rejection_reason:
+                    self._record_debug(
+                        debug_events,
+                        source="noun_chunk",
+                        candidate=candidate,
+                        action="dropped",
+                        reason=rejection_reason,
+                    )
                     continue
                 phrases.append(candidate)
+                self._record_debug(
+                    debug_events,
+                    source="noun_chunk",
+                    candidate=candidate,
+                    action="kept",
+                    reason="passed",
+                )
         phrases = dedupe_preserve_order(phrases)
-        return self._suppress_substrings(phrases)
+        return self._suppress_substrings(
+            phrases,
+            debug_events=debug_events,
+            source="noun_chunk",
+        )
 
-    def _extract_allowlisted_single_tokens(self, doc) -> List[str]:
+    def _extract_allowlisted_single_tokens(
+        self, doc, debug_events: Optional[List[Dict[str, str]]] = None
+    ) -> List[str]:
         phrases: List[str] = []
         for token in doc:
             if token.is_punct or token.is_space or token.like_num:
@@ -160,9 +231,31 @@ class JDParser:
             if not candidate:
                 continue
             if normalize_text(candidate) in self.domain_stoplist:
+                self._record_debug(
+                    debug_events,
+                    source="single_token",
+                    candidate=candidate,
+                    action="dropped",
+                    reason="domain_stoplist",
+                )
                 continue
             if self._allow_single_token(candidate):
                 phrases.append(candidate)
+                self._record_debug(
+                    debug_events,
+                    source="single_token",
+                    candidate=candidate,
+                    action="kept",
+                    reason="allowlisted_or_toolish",
+                )
+            else:
+                self._record_debug(
+                    debug_events,
+                    source="single_token",
+                    candidate=candidate,
+                    action="dropped",
+                    reason="single_token_not_allowlisted",
+                )
         return dedupe_preserve_order(phrases)
 
     def _clean_noun_chunk_candidates(self, chunk) -> List[str]:
@@ -244,22 +337,22 @@ class JDParser:
         text = self._strip_discourse_markers(text)
         return text
 
-    def _reject_candidate(self, candidate: str) -> bool:
+    def _candidate_rejection_reason(self, candidate: str) -> Optional[str]:
         normalized = normalize_text(candidate)
         if not normalized:
-            return True
+            return "empty_after_normalization"
         if len(normalized) < 3:
-            return True
+            return "too_short"
 
         tokens = normalized.split()
         if normalized in self.domain_stoplist:
-            return True
+            return "domain_stoplist"
         if all(token in self.domain_stoplist for token in tokens):
-            return True
+            return "all_tokens_domain_stoplist"
 
         if len(tokens) < 2 and not self._allow_single_token(candidate):
-            return True
-        return False
+            return "single_token_not_allowlisted"
+        return None
 
     def _allow_single_token(self, candidate: str) -> bool:
         normalized = normalize_text(candidate)
@@ -303,7 +396,12 @@ class JDParser:
             re.IGNORECASE,
         )
 
-    def _suppress_substrings(self, phrases: List[str]) -> List[str]:
+    def _suppress_substrings(
+        self,
+        phrases: List[str],
+        debug_events: Optional[List[Dict[str, str]]] = None,
+        source: str = "unknown",
+    ) -> List[str]:
         kept: List[str] = []
         normalized = [normalize_text(phrase) for phrase in phrases]
 
@@ -324,8 +422,34 @@ class JDParser:
                 if len(long_norm.split()) > 8:
                     continue
                 if re.search(rf"\b{re.escape(short_norm)}\b", long_norm):
+                    self._record_debug(
+                        debug_events,
+                        source=source,
+                        candidate=phrase,
+                        action="dropped",
+                        reason=f"substring_of:{other}",
+                    )
                     is_substring = True
                     break
             if not is_substring:
                 kept.append(phrase)
         return kept
+
+    def _record_debug(
+        self,
+        debug_events: Optional[List[Dict[str, str]]],
+        source: str,
+        candidate: str,
+        action: str,
+        reason: str,
+    ) -> None:
+        if debug_events is None:
+            return
+        debug_events.append(
+            {
+                "source": source,
+                "candidate": candidate,
+                "action": action,
+                "reason": reason,
+            }
+        )

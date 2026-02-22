@@ -23,6 +23,7 @@ st.set_page_config(page_title="Resume ATS Matcher v0.1", layout="wide")
 def clear_analysis_state() -> None:
     for key in [
         "skill_matches",
+        "skill_extraction_debug",
         "rewrite_suggestions",
         "accepted_changes",
         "updated_docx",
@@ -78,6 +79,13 @@ with st.sidebar:
             "TF-IDF shortlist size", 5, 50, 15, 5, on_change=clear_analysis_state
         )
 
+    st.markdown("**Debug**")
+    debug_skill_extraction = st.checkbox(
+        "Debug skill extraction",
+        value=False,
+        help="Logs keep/drop reasons to Streamlit Cloud logs and shows a debug table.",
+    )
+
     if st.button("Reset session"):
         reset_session()
         st.rerun()
@@ -120,7 +128,12 @@ if st.button("Analyze JD", disabled="resume_data" not in st.session_state):
     if not raw_text.strip():
         st.warning("Provide JD text or a valid URL before analyzing.")
         st.stop()
-    skill_candidates = jd_parser.extract_skill_terms(raw_text)
+    extraction = jd_parser.extract_skill_components(
+        raw_text,
+        debug=debug_skill_extraction,
+    )
+    skill_candidates = extraction["combined_skills"]
+    st.session_state["skill_extraction_debug"] = extraction.get("debug_events", [])
 
     resume_data = st.session_state["resume_data"]
     bullet_ids = list(resume_data.bullet_index.keys())
@@ -223,6 +236,12 @@ if "skill_matches" in st.session_state:
         f"{exact_count} | Strong semantic: {strong_count} | Weak semantic: {weak_count} | "
         f"Missing: {missing_count}"
     )
+
+    debug_events = st.session_state.get("skill_extraction_debug", [])
+    if debug_events:
+        with st.expander("Skill extraction debug"):
+            debug_df = pd.DataFrame(debug_events)
+            st.dataframe(debug_df, use_container_width=True)
 
     if st.button("Generate rewrite suggestions"):
         rewrite_engine = RewriteEngine()
