@@ -79,7 +79,7 @@ SINGLE_TOKEN_ALLOWLIST = {
     "tableau",
     "kafka",
     "pyspark",
-    "docker"
+    "docker",
 }
 
 TOOLISH_TOKEN_REGEX = re.compile(
@@ -203,6 +203,8 @@ class JDParser:
         for ent in doc.ents:
             if ent.label_ != "ESCO_SKILL":
                 continue
+            if "\n" in doc.text[ent.start_char : ent.end_char]:
+                continue
             candidate = self._normalize_candidate(ent.text)
             if not candidate:
                 continue
@@ -215,12 +217,12 @@ class JDParser:
     def _extract_clean_noun_chunks(self, doc) -> List[str]:
         phrases: List[str] = []
         for chunk in doc.noun_chunks:
-            candidate = self._clean_noun_chunk(chunk)
-            if not candidate:
-                continue
-            if self._reject_candidate(candidate):
-                continue
-            phrases.append(candidate)
+            for candidate in self._clean_noun_chunk_candidates(chunk):
+                if not candidate:
+                    continue
+                if self._reject_candidate(candidate):
+                    continue
+                phrases.append(candidate)
         phrases = dedupe_preserve_order(phrases)
         return self._suppress_substrings(phrases)
 
@@ -240,21 +242,37 @@ class JDParser:
                 phrases.append(candidate)
         return dedupe_preserve_order(phrases)
 
-    def _clean_noun_chunk(self, chunk) -> Optional[str]:
+    def _clean_noun_chunk_candidates(self, chunk) -> List[str]:
         """Return cleaned noun chunk with light-head stripping.
 
         A chunk like "enterprise performance area" has root/head "area".
         If the head lemma is generic (light-head), we drop the head token and keep
         informative modifiers only, e.g. "enterprise performance".
+
+        Newline boundaries are treated as hard breaks to avoid cross-line artifacts
+        like "AI Competency" from "AI\nCompetency".
         """
         tokens = [
-            token for token in chunk if not token.is_punct and not token.is_space and not token.like_num
-            ]
+            token
+            for token in chunk
+            if not token.is_punct and not token.is_space and not token.like_num
+        ]
         if not tokens:
-            return None
+            return []
 
-        root = chunk.root
-        if normalize_text(root.lemma_) in LIGHT_HEAD:
+        candidates: List[str] = []
+        for segment in self._split_tokens_on_hard_break(tokens):
+            if not segment:
+                continue
+            candidate = self._clean_noun_chunk_segment(segment, chunk.root)
+            if candidate:
+                candidates.append(candidate)
+        return candidates
+
+    def _clean_noun_chunk_segment(self, tokens: List, root) -> Optional[str]:
+        root_in_segment = any(token.i == root.i for token in tokens)
+
+        if root_in_segment and normalize_text(root.lemma_) in LIGHT_HEAD:
             tokens = [
                 token
                 for token in tokens
@@ -269,6 +287,27 @@ class JDParser:
         surface = " ".join(token.text for token in tokens)
         candidate = self._normalize_candidate(surface)
         return candidate or None
+
+    def _split_tokens_on_hard_break(self, tokens: List) -> List[List]:
+        segments: List[List] = []
+        current: List = []
+        for idx, token in enumerate(tokens):
+            current.append(token)
+            next_token = tokens[idx + 1] if idx + 1 < len(tokens) else None
+            if next_token is not None and self._contains_hard_break_between(
+                token, next_token
+            ):
+                segments.append(current)
+                current = []
+        if current:
+            segments.append(current)
+        return segments
+
+    def _contains_hard_break_between(self, left_token, right_token) -> bool:
+        gap_text = left_token.doc.text[
+            left_token.idx + len(left_token.text) : right_token.idx
+        ]
+        return "\n" in gap_text
 
     def _trim_determiners(self, tokens: List) -> List:
         while tokens and (tokens[0].pos_ == "DET" or tokens[0].is_stop):

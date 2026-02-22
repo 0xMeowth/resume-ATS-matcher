@@ -52,3 +52,12 @@ def test_allowlisted_single_token_can_pass(parser: JDParser) -> None:
     normalized = {item.lower() for item in skills}
 
     assert "sql" in normalized
+
+
+def test_newline_boundary_avoids_cross_line_phrase(parser: JDParser) -> None:
+    text = "Experience with AI\nCompetency in two or more of the following: SQL, AWS"
+    skills = parser.extract_skill_terms(text)
+    normalized = {item.lower() for item in skills}
+
+    assert "ai competency" not in normalized
+    assert "ai" in normalized
