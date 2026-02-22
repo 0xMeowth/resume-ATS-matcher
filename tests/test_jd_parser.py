@@ -61,3 +61,12 @@ def test_newline_boundary_avoids_cross_line_phrase(parser: JDParser) -> None:
 
     assert "ai competency" not in normalized
     assert "ai" in normalized
+
+
+def test_discourse_marker_is_removed_from_phrase(parser: JDParser) -> None:
+    text = "Tools include e.g. VBA, SQL, and AWS."
+    skills = parser.extract_skill_terms(text)
+    normalized = {item.lower() for item in skills}
+
+    assert "e.g. vba" not in normalized
+    assert "vba" in normalized

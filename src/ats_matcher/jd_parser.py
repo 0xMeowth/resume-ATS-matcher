@@ -8,79 +8,8 @@ import spacy
 from bs4 import BeautifulSoup
 
 from ats_matcher.nlp.esco import build_entity_ruler_patterns, load_esco_skill_phrases
+from ats_matcher.nlp.skill_config import load_skill_extraction_config
 from ats_matcher.utils import dedupe_preserve_order, normalize_text
-
-
-LIGHT_HEAD = {
-    "area",
-    "field",
-    "domain",
-    "space",
-    "scope",
-    "aspect",
-    "environment",
-    "function",
-    "capacity",
-    "capability",
-    "knowledge",
-    "experience",
-    "skills",
-    "skill",
-    "background",
-    "exposure",
-}
-
-DOMAIN_STOPLIST = {
-    "ability",
-    "area",
-    "background",
-    "domain",
-    "environment",
-    "experience",
-    "exposure",
-    "function",
-    "knowledge",
-    "minimum",
-    "relevant",
-    "scope",
-    "skill",
-    "skills",
-    "stakeholders",
-    "team",
-    "working",
-    "years",
-    "year",
-}
-
-SINGLE_TOKEN_ALLOWLIST = {
-    "ai",
-    "api",
-    "aws",
-    "bi",
-    "ci",
-    "crm",
-    "etl",
-    "excel",
-    "fpa",
-    "fp&a",
-    "gcp",
-    "git",
-    "java",
-    "jira",
-    "linux",
-    "nosql",
-    "ocr",
-    "powerbi",
-    "sap",
-    "scala",
-    "snowflake",
-    "spark",
-    "sql",
-    "tableau",
-    "kafka",
-    "pyspark",
-    "docker",
-}
 
 TOOLISH_TOKEN_REGEX = re.compile(
     r"^(c\+\+|c#|\.net|node\.js|react\.js|next\.js|[a-z0-9]+[+#./&-][a-z0-9+#./&-]*)$",
@@ -95,6 +24,7 @@ class JDParser:
         selected_esco_version: str = "latest",
         esco_cache_dir: str = ".cache/ats_matcher/esco",
         esco_skill_phrases: Optional[List[str]] = None,
+        skill_config_path: Optional[str] = None,
     ) -> None:
         self.model_name = model_name
         self.selected_esco_version = selected_esco_version
@@ -102,6 +32,14 @@ class JDParser:
         self._esco_skill_phrases = esco_skill_phrases
         self._nlp = None
         self._resolved_esco_version = None
+        config = load_skill_extraction_config(skill_config_path)
+        self.light_head = config.light_head
+        self.domain_stoplist = config.domain_stoplist
+        self.single_token_allowlist = config.single_token_allowlist
+        self.discourse_markers = config.discourse_markers
+        self._leading_discourse_marker_regex = self._compile_leading_discourse_regex(
+            self.discourse_markers
+        )
 
     @property
     def nlp(self):
@@ -236,7 +174,7 @@ class JDParser:
             candidate = self._normalize_candidate(token.text)
             if not candidate:
                 continue
-            if normalize_text(candidate) in DOMAIN_STOPLIST:
+            if normalize_text(candidate) in self.domain_stoplist:
                 continue
             if self._allow_single_token(candidate):
                 phrases.append(candidate)
@@ -272,7 +210,7 @@ class JDParser:
     def _clean_noun_chunk_segment(self, tokens: List, root) -> Optional[str]:
         root_in_segment = any(token.i == root.i for token in tokens)
 
-        if root_in_segment and normalize_text(root.lemma_) in LIGHT_HEAD:
+        if root_in_segment and normalize_text(root.lemma_) in self.light_head:
             tokens = [
                 token
                 for token in tokens
@@ -318,6 +256,7 @@ class JDParser:
 
     def _normalize_candidate(self, text: str) -> str:
         text = re.sub(r"\s+", " ", text).strip(" ,.;:()[]{}")
+        text = self._strip_discourse_markers(text)
         return text
 
     def _reject_candidate(self, candidate: str) -> bool:
@@ -328,9 +267,9 @@ class JDParser:
             return True
 
         tokens = normalized.split()
-        if normalized in DOMAIN_STOPLIST:
+        if normalized in self.domain_stoplist:
             return True
-        if all(token in DOMAIN_STOPLIST for token in tokens):
+        if all(token in self.domain_stoplist for token in tokens):
             return True
 
         if len(tokens) < 2 and not self._allow_single_token(candidate):
@@ -340,7 +279,7 @@ class JDParser:
     def _allow_single_token(self, candidate: str) -> bool:
         normalized = normalize_text(candidate)
         compact = normalized.replace(" ", "")
-        if compact in SINGLE_TOKEN_ALLOWLIST:
+        if compact in self.single_token_allowlist:
             return True
 
         raw = candidate.strip()
@@ -351,6 +290,33 @@ class JDParser:
         if uppercase_raw.isupper() and 2 <= len(uppercase_raw) <= 8:
             return True
         return False
+
+    def _strip_discourse_markers(self, text: str) -> str:
+        if not text:
+            return text
+        cleaned = text
+        for _ in range(3):
+            next_cleaned = self._leading_discourse_marker_regex.sub("", cleaned).strip(
+                " ,.;:()[]{}"
+            )
+            if next_cleaned == cleaned:
+                break
+            cleaned = next_cleaned
+        return cleaned
+
+    def _compile_leading_discourse_regex(self, markers: List[str]) -> re.Pattern[str]:
+        variants: List[str] = []
+        for marker in markers:
+            escaped = re.escape(marker)
+            escaped = escaped.replace(r"\ ", r"\s+")
+            variants.append(escaped)
+        if not variants:
+            return re.compile(r"^$")
+        joined = "|".join(sorted(variants, key=len, reverse=True))
+        return re.compile(
+            rf"^(?:{joined})(?=\s|$|[,;:.-])[\s,;:.-]*",
+            re.IGNORECASE,
+        )
 
     def _suppress_substrings(self, phrases: List[str]) -> List[str]:
         kept: List[str] = []

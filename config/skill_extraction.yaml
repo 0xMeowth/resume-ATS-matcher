@@ -1,0 +1,85 @@
+light_head:
+  - area
+  - field
+  - domain
+  - space
+  - scope
+  - aspect
+  - environment
+  - function
+  - capacity
+  - capability
+  - knowledge
+  - experience
+  - skills
+  - skill
+  - background
+  - exposure
+
+domain_stoplist:
+  - ability
+  - area
+  - background
+  - competency
+  - domain
+  - environment
+  - experience
+  - exposure
+  - function
+  - knowledge
+  - minimum
+  - relevant
+  - scope
+  - skill
+  - skills
+  - stakeholders
+  - team
+  - working
+  - years
+  - year
+
+single_token_allowlist:
+  - ai
+  - api
+  - aws
+  - bi
+  - c/c++
+  - ci
+  - cicd
+  - ci/cd
+  - confluence
+  - crm
+  - docker
+  - etl
+  - excel
+  - fpa
+  - fp&a
+  - gcp
+  - git
+  - java
+  - jira
+  - kafka
+  - linux
+  - mysql
+  - nosql
+  - ocr
+  - postgresql
+  - powerbi
+  - pyspark
+  - sap
+  - scala
+  - snowflake
+  - spark
+  - sql
+  - tableau
+  - vba
+
+discourse_markers:
+  - such as
+  - ie
+  - i.e.
+  - eg
+  - e.g.
+  - including
+  - for example
+  - etc
