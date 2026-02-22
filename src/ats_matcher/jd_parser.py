@@ -77,6 +77,9 @@ SINGLE_TOKEN_ALLOWLIST = {
     "spark",
     "sql",
     "tableau",
+    "kafka",
+    "pyspark",
+    "docker"
 }
 
 TOOLISH_TOKEN_REGEX = re.compile(
@@ -244,7 +247,9 @@ class JDParser:
         If the head lemma is generic (light-head), we drop the head token and keep
         informative modifiers only, e.g. "enterprise performance".
         """
-        tokens = [token for token in chunk if not token.is_punct and not token.is_space]
+        tokens = [
+            token for token in chunk if not token.is_punct and not token.is_space and not token.like_num
+            ]
         if not tokens:
             return None
 
