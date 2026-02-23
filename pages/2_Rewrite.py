@@ -265,6 +265,12 @@ def _render_editors() -> None:
                     )
                     st.session_state[widget_key] = sanitize_editor_text(initial)
 
+                current_text = sanitize_editor_text(
+                    st.session_state.get(widget_key, "")
+                )
+                st.session_state[widget_key] = current_text
+                editor_height = _editor_height(current_text)
+
                 left, middle, right = st.columns(
                     [0.8, 0.8, 10], vertical_alignment="top"
                 )
@@ -285,11 +291,21 @@ def _render_editors() -> None:
                     st.text_area(
                         label=f"Bullet {bullet.bullet_id}",
                         key=widget_key,
-                        height=90,
+                        height=editor_height,
                         label_visibility="collapsed",
                         on_change=_sync_editor_to_edits,
                         args=(bullet.bullet_id,),
                     )
+
+
+def _editor_height(text: str) -> int:
+    normalized = sanitize_editor_text(text)
+    lines = normalized.splitlines() or [""]
+    visual_lines = 0
+    for line in lines:
+        length = max(1, len(line))
+        visual_lines += max(1, (length + 94) // 95)
+    return max(56, min(240, 16 + visual_lines * 22))
 
 
 _init_session_state()
@@ -303,22 +319,11 @@ if not st.session_state.get("coverage_now") and not st.session_state.get(
 if not st.session_state.get("rewrite_pdf_bytes"):
     _build_pdf_only()
 
-st.markdown(
-    """
-<style>
-div[data-testid="column"]:nth-of-type(2) > div {
-    position: sticky;
-    top: 0.75rem;
-}
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
 editor_col, coverage_col = st.columns([1.9, 1.1], gap="large")
 
 with editor_col:
-    _render_editors()
+    with st.container(height=760):
+        _render_editors()
     if st.button("Update preview", type="primary"):
         _build_pdf_only()
         st.success("PDF preview updated.")
@@ -327,8 +332,8 @@ with coverage_col:
     with st.container(border=True):
         _render_coverage_panel()
         st.caption(
-            "Coverage panel is sticky in this column. If browser/CSP blocks sticky behavior, "
-            "it remains visible as a dedicated right column while you scroll."
+            "Coverage panel remains visible while scrolling by using a scrollable editor pane "
+            "on the left (closest reliable sticky behavior in Streamlit without custom frontend)."
         )
 
 pdf_bytes = st.session_state.get("rewrite_pdf_bytes", b"")
@@ -336,10 +341,27 @@ if pdf_bytes:
     st.subheader("A4 PDF Preview")
     pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
     iframe = (
-        "<iframe "
-        'src="data:application/pdf;base64,'
+        """
+<div style="width:100%;height:900px;border:1px solid #ddd;">
+  <iframe id="pdf-frame" style="width:100%;height:100%;border:none;" type="application/pdf"></iframe>
+</div>
+<script>
+  const b64 = '"""
         + pdf_base64
-        + '" width="100%" height="900" type="application/pdf"></iframe>'
+        + """';
+  const raw = atob(b64);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) {
+    bytes[i] = raw.charCodeAt(i);
+  }
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const frame = document.getElementById('pdf-frame');
+  if (frame) {
+    frame.src = url;
+  }
+</script>
+"""
     )
     components.html(iframe, height=920, scrolling=True)
     st.download_button(
