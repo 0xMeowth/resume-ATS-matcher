@@ -22,7 +22,6 @@ from ats_matcher.render.rewrite_utils import (
     extract_resume_text,
     ordered_bullets_for_role,
     sanitize_editor_text,
-    split_newline_terms,
 )
 from ats_matcher.models import ResumeData
 
@@ -31,6 +30,24 @@ st.set_page_config(page_title="Rewrite", layout="wide")
 st.title("Rewrite")
 st.caption(
     "Manual bullet editing with A4 PDF preview/export and term coverage tracking."
+)
+st.markdown(
+    """
+<style>
+.rewrite-section h3 {
+  margin-top: 0.2rem;
+  margin-bottom: 0.1rem;
+}
+.rewrite-role {
+  margin-top: 0.05rem;
+  margin-bottom: 0.15rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+</style>
+""",
+    unsafe_allow_html=True,
 )
 
 resume_data = st.session_state.get("resume_data")
@@ -52,8 +69,6 @@ def _init_session_state() -> None:
     st.session_state.setdefault("coverage_history", [])
     st.session_state.setdefault("rewrite_name", "")
     st.session_state.setdefault("rewrite_contact", "")
-    st.session_state.setdefault("rewrite_manual_terms", "")
-    st.session_state.setdefault("rewrite_use_manual_only", False)
     st.session_state.setdefault("rewrite_bullet_order", {})
 
 
@@ -97,21 +112,7 @@ def _auto_tracked_terms() -> list[str]:
 
 
 def _effective_terms() -> list[str]:
-    auto_terms = _auto_tracked_terms()
-    manual_terms = split_newline_terms(st.session_state.get("rewrite_manual_terms", ""))
-
-    if st.session_state.get("rewrite_use_manual_only", False):
-        return manual_terms
-
-    merged: list[str] = []
-    seen: set[str] = set()
-    for term in auto_terms + manual_terms:
-        lowered = term.lower()
-        if lowered in seen:
-            continue
-        seen.add(lowered)
-        merged.append(term)
-    return merged
+    return _auto_tracked_terms()
 
 
 def _sync_editor_to_edits(bullet_id: str) -> None:
@@ -121,10 +122,6 @@ def _sync_editor_to_edits(bullet_id: str) -> None:
     edits = st.session_state.get("resume_edits", {}).copy()
     edits[bullet_id] = value
     st.session_state["resume_edits"] = edits
-    _recompute_coverage_only()
-
-
-def _on_terms_change() -> None:
     _recompute_coverage_only()
 
 
@@ -195,20 +192,6 @@ def _render_coverage_panel() -> None:
     auto_terms = _auto_tracked_terms()
     st.caption(f"Auto-loaded terms from JD analysis: {len(auto_terms)}")
 
-    st.text_area(
-        "Manual term list (newline-separated)",
-        key="rewrite_manual_terms",
-        height=120,
-        help="Use this to add terms or paste your own list.",
-        on_change=_on_terms_change,
-    )
-    st.checkbox(
-        "Use manual term list only",
-        key="rewrite_use_manual_only",
-        help="If checked, auto-loaded JD terms are ignored.",
-        on_change=_on_terms_change,
-    )
-
     covered_now = sorted(st.session_state.get("coverage_now", set()))
     missing_now = st.session_state.get("coverage_missing", _effective_terms())
 
@@ -245,10 +228,16 @@ def _render_editors() -> None:
     order_map = st.session_state.get("rewrite_bullet_order", {})
 
     for section_idx, section in enumerate(resume_data.sections):
-        st.markdown(f"### {section.title}")
+        st.markdown(
+            f"<div class='rewrite-section'><h3>{section.title}</h3></div>",
+            unsafe_allow_html=True,
+        )
         for role_idx, role in enumerate(section.roles):
             if role.title:
-                st.markdown(f"**{_format_role_header(role.title)}**")
+                st.markdown(
+                    f"<div class='rewrite-role'>{_format_role_header(role.title)}</div>",
+                    unsafe_allow_html=True,
+                )
 
             role_key = _role_key(section_idx, role_idx)
             ordered_bullets = ordered_bullets_for_role(
@@ -328,6 +317,8 @@ def _format_role_header(raw: str) -> str:
     compact = " ".join(raw.split())
     compact = re.sub(r"\s*\|\s*", " | ", compact)
     compact = re.sub(r"\s{2,}", " ", compact)
+    compact = re.sub(r"\s*\|\s*", " | ", compact)
+    compact = re.sub(r"\s{2,}", " ", compact)
     return compact
 
 
@@ -349,10 +340,10 @@ if not st.session_state.get("coverage_now") and not st.session_state.get(
 if not st.session_state.get("rewrite_pdf_bytes"):
     _build_pdf_only()
 
-editor_col, coverage_col = st.columns([1.95, 1.05], gap="small")
+editor_col, coverage_col = st.columns([2.05, 0.95], gap="small")
 
 with editor_col:
-    with st.container(height=860):
+    with st.container(height=990):
         _render_editors()
     if st.button("Update preview", type="primary"):
         _build_pdf_only()
