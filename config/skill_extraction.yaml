@@ -45,6 +45,7 @@ single_token_allowlist:
   - ai
   - api
   - aws
+  - azure
   - bi
   - blockchain
   - c/c++
@@ -53,8 +54,6 @@ single_token_allowlist:
   - ci/cd
   - confluence
   - crm
-  - crypto
-  - cryptocurrency
   - docker
   - database
   - defi 
