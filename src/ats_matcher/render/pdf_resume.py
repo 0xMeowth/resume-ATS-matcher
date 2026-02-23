@@ -9,7 +9,11 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 
 from ats_matcher.models import ResumeData
-from ats_matcher.render.rewrite_utils import strip_leading_bullet_prefixes
+from ats_matcher.render.rewrite_utils import (
+    ordered_bullets_for_role,
+    sanitize_editor_text,
+    strip_leading_bullet_prefixes,
+)
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,7 @@ def render_resume_pdf(
     edits: dict[str, str],
     full_name: str,
     contact_line: str,
+    bullet_order_by_role: dict[str, list[str]] | None = None,
     config: ResumeTemplateConfig = DEFAULT_TEMPLATE_CONFIG,
 ) -> bytes:
     buffer = BytesIO()
@@ -144,16 +149,23 @@ def render_resume_pdf(
         return current_y
 
     y = start_page()
-    for section in resume.sections:
+    for section_idx, section in enumerate(resume.sections):
         if not section.roles:
             continue
         y = draw_section_heading(section.title, y)
-        for role in section.roles:
+        for role_idx, role in enumerate(section.roles):
             role_title = (role.title or "").strip()
             if role_title:
                 y = draw_role_title(role_title, y)
-            for bullet in role.bullets:
+            role_key = f"{section_idx}:{role_idx}"
+            ordered_bullets = ordered_bullets_for_role(
+                role=role,
+                role_key=role_key,
+                bullet_order_by_role=bullet_order_by_role,
+            )
+            for bullet in ordered_bullets:
                 bullet_text = edits.get(bullet.bullet_id, bullet.text)
+                bullet_text = sanitize_editor_text(bullet_text)
                 y = draw_bullet_line(bullet_text, y)
             y -= 2.0
 

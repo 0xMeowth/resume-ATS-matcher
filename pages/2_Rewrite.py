@@ -4,6 +4,7 @@ import base64
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 import streamlit as st
@@ -18,8 +19,11 @@ from ats_matcher.render.pdf_resume import render_resume_pdf
 from ats_matcher.render.rewrite_utils import (
     compute_coverage,
     extract_resume_text,
+    ordered_bullets_for_role,
+    sanitize_editor_text,
     split_newline_terms,
 )
+from ats_matcher.models import ResumeData
 
 
 st.set_page_config(page_title="Rewrite", layout="wide")
@@ -32,18 +36,46 @@ resume_data = st.session_state.get("resume_data")
 if resume_data is None:
     st.warning("Upload and parse a resume on the main page first.")
     st.stop()
+assert resume_data is not None
+resume_data: ResumeData = cast(ResumeData, resume_data)
 
-st.session_state.setdefault("resume_edits", {})
-st.session_state.setdefault("rewrite_pdf_bytes", b"")
-st.session_state.setdefault("coverage_prev", set())
-st.session_state.setdefault("coverage_now", set())
-st.session_state.setdefault("coverage_added", [])
-st.session_state.setdefault("coverage_removed", [])
-st.session_state.setdefault("coverage_history", [])
-st.session_state.setdefault("rewrite_name", "")
-st.session_state.setdefault("rewrite_contact", "")
-st.session_state.setdefault("rewrite_manual_terms", "")
-st.session_state.setdefault("rewrite_use_manual_only", False)
+
+def _init_session_state() -> None:
+    st.session_state.setdefault("resume_edits", {})
+    st.session_state.setdefault("rewrite_pdf_bytes", b"")
+    st.session_state.setdefault("coverage_prev", set())
+    st.session_state.setdefault("coverage_now", set())
+    st.session_state.setdefault("coverage_missing", [])
+    st.session_state.setdefault("coverage_added", [])
+    st.session_state.setdefault("coverage_removed", [])
+    st.session_state.setdefault("coverage_history", [])
+    st.session_state.setdefault("rewrite_name", "")
+    st.session_state.setdefault("rewrite_contact", "")
+    st.session_state.setdefault("rewrite_manual_terms", "")
+    st.session_state.setdefault("rewrite_use_manual_only", False)
+    st.session_state.setdefault("rewrite_bullet_order", {})
+
+
+def _role_key(section_idx: int, role_idx: int) -> str:
+    return f"{section_idx}:{role_idx}"
+
+
+def _ensure_order_map() -> None:
+    existing = st.session_state.get("rewrite_bullet_order", {})
+    updated = dict(existing)
+    for section_idx, section in enumerate(resume_data.sections):
+        for role_idx, role in enumerate(section.roles):
+            key = _role_key(section_idx, role_idx)
+            default_ids = [bullet.bullet_id for bullet in role.bullets]
+            current_ids = updated.get(key, [])
+            ordered = [
+                bullet_id for bullet_id in current_ids if bullet_id in default_ids
+            ]
+            for bullet_id in default_ids:
+                if bullet_id not in ordered:
+                    ordered.append(bullet_id)
+            updated[key] = ordered
+    st.session_state["rewrite_bullet_order"] = updated
 
 
 def _auto_tracked_terms() -> list[str]:
@@ -81,9 +113,44 @@ def _effective_terms() -> list[str]:
     return merged
 
 
-def _build_pdf_and_coverage() -> None:
+def _sync_editor_to_edits(bullet_id: str) -> None:
+    widget_key = f"rewrite_bullet_{bullet_id}"
+    value = sanitize_editor_text(st.session_state.get(widget_key, ""))
+    st.session_state[widget_key] = value
+    edits = st.session_state.get("resume_edits", {}).copy()
+    edits[bullet_id] = value
+    st.session_state["resume_edits"] = edits
+    _recompute_coverage_only()
+
+
+def _on_terms_change() -> None:
+    _recompute_coverage_only()
+
+
+def _move_bullet(role_key: str, bullet_id: str, step: int) -> None:
+    order_map = st.session_state.get("rewrite_bullet_order", {}).copy()
+    current = list(order_map.get(role_key, []))
+    if bullet_id not in current:
+        return
+    idx = current.index(bullet_id)
+    target = idx + step
+    if target < 0 or target >= len(current):
+        return
+    current[idx], current[target] = current[target], current[idx]
+    order_map[role_key] = current
+    st.session_state["rewrite_bullet_order"] = order_map
+    _recompute_coverage_only()
+    st.rerun()
+
+
+def _recompute_coverage_only() -> None:
     edits: dict[str, str] = st.session_state.get("resume_edits", {})
-    resume_text = extract_resume_text(resume_data, edits)
+    order_map = st.session_state.get("rewrite_bullet_order", {})
+    resume_text = extract_resume_text(
+        resume=resume_data,
+        edits=edits,
+        bullet_order_by_role=order_map,
+    )
     terms = _effective_terms()
     covered, missing = compute_coverage(terms=terms, resume_text=resume_text)
 
@@ -109,15 +176,20 @@ def _build_pdf_and_coverage() -> None:
         )
         st.session_state["coverage_history"] = history[-10:]
 
+
+def _build_pdf_only() -> None:
+    edits: dict[str, str] = st.session_state.get("resume_edits", {})
+    order_map = st.session_state.get("rewrite_bullet_order", {})
     st.session_state["rewrite_pdf_bytes"] = render_resume_pdf(
         resume=resume_data,
         edits=edits,
         full_name=st.session_state.get("rewrite_name", ""),
         contact_line=st.session_state.get("rewrite_contact", ""),
+        bullet_order_by_role=order_map,
     )
 
 
-with st.container(border=True):
+def _render_coverage_panel() -> None:
     st.subheader("Tracked Terms")
     auto_terms = _auto_tracked_terms()
     st.caption(f"Auto-loaded terms from JD analysis: {len(auto_terms)}")
@@ -127,38 +199,40 @@ with st.container(border=True):
         key="rewrite_manual_terms",
         height=120,
         help="Use this to add terms or paste your own list.",
+        on_change=_on_terms_change,
     )
     st.checkbox(
         "Use manual term list only",
         key="rewrite_use_manual_only",
         help="If checked, auto-loaded JD terms are ignored.",
+        on_change=_on_terms_change,
     )
 
-covered_now = sorted(st.session_state.get("coverage_now", set()))
-missing_now = st.session_state.get("coverage_missing", _effective_terms())
+    covered_now = sorted(st.session_state.get("coverage_now", set()))
+    missing_now = st.session_state.get("coverage_missing", _effective_terms())
 
-col_cov, col_miss = st.columns(2)
-with col_cov:
-    st.markdown("**Covered**")
-    st.write(covered_now or "None")
-with col_miss:
-    st.markdown("**Missing**")
-    st.write(missing_now or "None")
+    col_cov, col_miss = st.columns(2)
+    with col_cov:
+        st.markdown("**Covered**")
+        st.write(covered_now or "None")
+    with col_miss:
+        st.markdown("**Missing**")
+        st.write(missing_now or "None")
 
-added_terms = st.session_state.get("coverage_added", [])
-removed_terms = st.session_state.get("coverage_removed", [])
-if added_terms:
-    st.success(f"Newly covered: {', '.join(added_terms)}")
-if removed_terms:
-    st.error(f"Lost coverage: {', '.join(removed_terms)}")
+    added_terms = st.session_state.get("coverage_added", [])
+    removed_terms = st.session_state.get("coverage_removed", [])
+    if added_terms:
+        st.success(f"Newly covered: {', '.join(added_terms)}")
+    if removed_terms:
+        st.error(f"Lost coverage: {', '.join(removed_terms)}")
 
-history = st.session_state.get("coverage_history", [])
-if history:
-    with st.expander("Coverage history"):
-        st.dataframe(pd.DataFrame(history), use_container_width=True)
+    history = st.session_state.get("coverage_history", [])
+    if history:
+        with st.expander("Coverage history"):
+            st.dataframe(pd.DataFrame(history), use_container_width=True)
 
 
-with st.form("rewrite_editor_form"):
+def _render_editors() -> None:
     st.subheader("Manual Editing")
     st.text_input("Name", key="rewrite_name", placeholder="Your Name")
     st.text_input(
@@ -167,40 +241,95 @@ with st.form("rewrite_editor_form"):
         placeholder="email | phone | city | linkedin",
     )
 
-    for section in resume_data.sections:
+    order_map = st.session_state.get("rewrite_bullet_order", {})
+
+    for section_idx, section in enumerate(resume_data.sections):
         st.markdown(f"### {section.title}")
-        for role in section.roles:
+        for role_idx, role in enumerate(section.roles):
             if role.title:
                 st.markdown(f"**{role.title}**")
-            for bullet in role.bullets:
+
+            role_key = _role_key(section_idx, role_idx)
+            ordered_bullets = ordered_bullets_for_role(
+                role=role,
+                role_key=role_key,
+                bullet_order_by_role=order_map,
+            )
+
+            for bullet in ordered_bullets:
                 widget_key = f"rewrite_bullet_{bullet.bullet_id}"
                 if widget_key not in st.session_state:
-                    st.session_state[widget_key] = st.session_state["resume_edits"].get(
+                    initial = st.session_state["resume_edits"].get(
                         bullet.bullet_id,
                         bullet.text,
                     )
-                st.text_area(
-                    label=f"Bullet {bullet.bullet_id}",
-                    key=widget_key,
-                    height=90,
-                    label_visibility="collapsed",
+                    st.session_state[widget_key] = sanitize_editor_text(initial)
+
+                left, middle, right = st.columns(
+                    [0.8, 0.8, 10], vertical_alignment="top"
                 )
+                with left:
+                    st.markdown("↕")
+                    up_key = f"move_up_{role_key}_{bullet.bullet_id}"
+                    if st.button("↑", key=up_key):
+                        _move_bullet(
+                            role_key=role_key, bullet_id=bullet.bullet_id, step=-1
+                        )
+                with middle:
+                    down_key = f"move_down_{role_key}_{bullet.bullet_id}"
+                    if st.button("↓", key=down_key):
+                        _move_bullet(
+                            role_key=role_key, bullet_id=bullet.bullet_id, step=1
+                        )
+                with right:
+                    st.text_area(
+                        label=f"Bullet {bullet.bullet_id}",
+                        key=widget_key,
+                        height=90,
+                        label_visibility="collapsed",
+                        on_change=_sync_editor_to_edits,
+                        args=(bullet.bullet_id,),
+                    )
 
-    update_preview = st.form_submit_button("Update preview")
 
-if update_preview:
-    edits = st.session_state.get("resume_edits", {}).copy()
-    for section in resume_data.sections:
-        for role in section.roles:
-            for bullet in role.bullets:
-                widget_key = f"rewrite_bullet_{bullet.bullet_id}"
-                edits[bullet.bullet_id] = st.session_state.get(widget_key, bullet.text)
-    st.session_state["resume_edits"] = edits
-    _build_pdf_and_coverage()
-    st.success("Preview and coverage updated.")
+_init_session_state()
+_ensure_order_map()
+
+if not st.session_state.get("coverage_now") and not st.session_state.get(
+    "coverage_missing"
+):
+    _recompute_coverage_only()
 
 if not st.session_state.get("rewrite_pdf_bytes"):
-    _build_pdf_and_coverage()
+    _build_pdf_only()
+
+st.markdown(
+    """
+<style>
+div[data-testid="column"]:nth-of-type(2) > div {
+    position: sticky;
+    top: 0.75rem;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+editor_col, coverage_col = st.columns([1.9, 1.1], gap="large")
+
+with editor_col:
+    _render_editors()
+    if st.button("Update preview", type="primary"):
+        _build_pdf_only()
+        st.success("PDF preview updated.")
+
+with coverage_col:
+    with st.container(border=True):
+        _render_coverage_panel()
+        st.caption(
+            "Coverage panel is sticky in this column. If browser/CSP blocks sticky behavior, "
+            "it remains visible as a dedicated right column while you scroll."
+        )
 
 pdf_bytes = st.session_state.get("rewrite_pdf_bytes", b"")
 if pdf_bytes:
