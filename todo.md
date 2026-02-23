@@ -9,8 +9,10 @@
 - [ ] stress test resume_parser and JD_parser:
   - [ ] download sample real CVs from online (github/reddit?/google) to stress-test resume_parser
   - [ ] scrape real JDs (source?) and create a script that locally skill word extractor, spot check coverage/accuracy. 
+- [ ] implement a semantic search/match on new JDs, pull the most similar JD-edited_cv pair, and load that CV as the new baseline for editing
 
 - [ ] stretch goals:
   - [ ] BYO model implementation to help rewriting
   - [ ] more resume templates 
   - [ ] proper onboarding/auth/db-creation
+  
