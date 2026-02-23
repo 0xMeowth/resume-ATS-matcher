@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -211,13 +212,13 @@ def _render_coverage_panel() -> None:
     covered_now = sorted(st.session_state.get("coverage_now", set()))
     missing_now = st.session_state.get("coverage_missing", _effective_terms())
 
-    col_cov, col_miss = st.columns(2)
+    col_cov, col_miss = st.columns(2, gap="small")
     with col_cov:
         st.markdown("**Covered**")
-        st.write(covered_now or "None")
+        _render_term_list(covered_now)
     with col_miss:
         st.markdown("**Missing**")
-        st.write(missing_now or "None")
+        _render_term_list(missing_now)
 
     added_terms = st.session_state.get("coverage_added", [])
     removed_terms = st.session_state.get("coverage_removed", [])
@@ -247,7 +248,7 @@ def _render_editors() -> None:
         st.markdown(f"### {section.title}")
         for role_idx, role in enumerate(section.roles):
             if role.title:
-                st.markdown(f"**{role.title}**")
+                st.markdown(f"**{_format_role_header(role.title)}**")
 
             role_key = _role_key(section_idx, role_idx)
             ordered_bullets = ordered_bullets_for_role(
@@ -271,23 +272,37 @@ def _render_editors() -> None:
                 st.session_state[widget_key] = current_text
                 editor_height = _editor_height(current_text)
 
-                left, middle, right = st.columns(
-                    [0.8, 0.8, 10], vertical_alignment="top"
+                current_role_order = st.session_state.get(
+                    "rewrite_bullet_order", {}
+                ).get(role_key, [])
+                bullet_idx = current_role_order.index(bullet.bullet_id)
+                is_first = bullet_idx == 0
+                is_last = bullet_idx == len(current_role_order) - 1
+
+                controls_col, editor_box_col = st.columns(
+                    [0.9, 10], gap="small", vertical_alignment="top"
                 )
-                with left:
-                    st.markdown("↕")
+                with controls_col:
                     up_key = f"move_up_{role_key}_{bullet.bullet_id}"
-                    if st.button("↑", key=up_key):
+                    if st.button(
+                        "↑", key=up_key, disabled=is_first, use_container_width=True
+                    ):
                         _move_bullet(
                             role_key=role_key, bullet_id=bullet.bullet_id, step=-1
                         )
-                with middle:
+
                     down_key = f"move_down_{role_key}_{bullet.bullet_id}"
-                    if st.button("↓", key=down_key):
+                    if st.button(
+                        "↓",
+                        key=down_key,
+                        disabled=is_last,
+                        use_container_width=True,
+                    ):
                         _move_bullet(
                             role_key=role_key, bullet_id=bullet.bullet_id, step=1
                         )
-                with right:
+
+                with editor_box_col:
                     st.text_area(
                         label=f"Bullet {bullet.bullet_id}",
                         key=widget_key,
@@ -305,7 +320,22 @@ def _editor_height(text: str) -> int:
     for line in lines:
         length = max(1, len(line))
         visual_lines += max(1, (length + 94) // 95)
-    return max(56, min(240, 16 + visual_lines * 22))
+    capped_lines = min(7, max(2, visual_lines))
+    return 14 + capped_lines * 24
+
+
+def _format_role_header(raw: str) -> str:
+    compact = " ".join(raw.split())
+    compact = re.sub(r"\s*\|\s*", " | ", compact)
+    compact = re.sub(r"\s{2,}", " ", compact)
+    return compact
+
+
+def _render_term_list(terms: list[str]) -> None:
+    if not terms:
+        st.caption("None")
+        return
+    st.markdown("\n".join(f"- {term}" for term in terms))
 
 
 _init_session_state()
@@ -319,10 +349,10 @@ if not st.session_state.get("coverage_now") and not st.session_state.get(
 if not st.session_state.get("rewrite_pdf_bytes"):
     _build_pdf_only()
 
-editor_col, coverage_col = st.columns([1.9, 1.1], gap="large")
+editor_col, coverage_col = st.columns([1.95, 1.05], gap="small")
 
 with editor_col:
-    with st.container(height=760):
+    with st.container(height=860):
         _render_editors()
     if st.button("Update preview", type="primary"):
         _build_pdf_only()
