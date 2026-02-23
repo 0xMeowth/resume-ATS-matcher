@@ -1,0 +1,16 @@
+- [ ] change default typeface, with some choices when generating preview/exporting
+- [ ] handle the name identification (probably custom regex to catch)
+- [ ] refactor code to move away from streamlit (vercel/railway?)
+  - [ ] analyse/design where to store the compute (cost/benefit), and what can be cached/reused
+- [ ] sanitise code/yaml/docs/docstrings (no personal info)
+- [ ] improve keyword matching
+  - [ ] apart from ESCO, should we also consider other lists
+  - [ ] does domain stopwords need touch-up?
+- [ ] stress test resume_parser and JD_parser:
+  - [ ] download sample real CVs from online (github/reddit?/google) to stress-test resume_parser
+  - [ ] scrape real JDs (source?) and create a script that locally skill word extractor, spot check coverage/accuracy. 
+
+- [ ] stretch goals:
+  - [ ] BYO model implementation to help rewriting
+  - [ ] more resume templates 
+  - [ ] proper onboarding/auth/db-creation
