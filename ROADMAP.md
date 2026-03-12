@@ -18,9 +18,9 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 1d: PDF input support | done | pdfplumber added; `ResumeData.low_confidence` on `ResumeData`; magic-byte detection; 6 narrow-scope tests; 20/20 passing |
 | 2a: API contract doc | done | `docs/api-contract.md` — 3 endpoints: POST /api/resume, POST /api/jd/analyze, POST /api/export. **User did not review the contract but agreed to proceed; revisit if endpoint behaviour feels wrong during Stage 2d smoke-test.** |
 | 2b: FastAPI backend scaffold | done | `backend/main.py` (lifespan singletons), `backend/routers.py` (4 endpoints), `backend/stores.py`; imports verified |
-| 2c: React frontend scaffold | pending | |
-| 2d: Wire + smoke-test | pending | |
-| 2e: Containerize / deploy config | pending | |
+| 2c: React frontend scaffold | done | Vite + React; 5-step wizard; `frontend/src/`; build verified |
+| 2d: Wire + smoke-test | done | End-to-end flow verified manually |
+| 2e: Containerize / deploy config | done | `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`, `frontend/nginx.conf`, `.dockerignore`; model cache via named volume |
 | 3a: Schema + migration script | pending | |
 | 3b: DB logging in FastAPI | pending | |
 | 3c: sqlite-vec extension | pending | |

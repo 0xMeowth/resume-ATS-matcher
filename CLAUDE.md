@@ -22,6 +22,20 @@ uv run uvicorn backend.main:app --reload --port 8000
 # API docs at http://localhost:8000/docs
 ```
 
+**Run (React frontend — Phase 2+):**
+```bash
+cd frontend && npm install && npm run dev
+# UI at http://localhost:5173
+```
+
+**Run (Docker Compose — both services):**
+```bash
+docker compose up --build
+# Frontend at http://localhost  (port 80)
+# Backend at http://localhost:8000
+# First build downloads spaCy + HuggingFace models (~1-2 GB); subsequent runs use the model_cache volume
+```
+
 **Test:**
 ```bash
 uv run pytest                                                        # all tests

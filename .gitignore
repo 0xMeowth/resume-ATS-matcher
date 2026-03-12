@@ -5,3 +5,4 @@ __pycache__/
 .streamlit/secrets.toml
 .ruff_cache/*.egg-info/
 .cache/
+frontend/node_modules/

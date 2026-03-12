@@ -1,0 +1,38 @@
+const BASE = '/api'
+
+async function checkResponse(res) {
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.detail || `HTTP ${res.status}`)
+  }
+  return res
+}
+
+export async function uploadResume(file) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await checkResponse(await fetch(`${BASE}/resume`, { method: 'POST', body: form }))
+  return res.json()
+}
+
+export async function analyzeJD(resumeId, jdText, settings) {
+  const res = await checkResponse(await fetch(`${BASE}/jd/analyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resume_id: resumeId, jd_text: jdText, settings }),
+  }))
+  return res.json()
+}
+
+export async function exportResume(resumeId, analysisId, acceptedChanges) {
+  const res = await checkResponse(await fetch(`${BASE}/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      resume_id: resumeId,
+      analysis_id: analysisId,
+      accepted_changes: acceptedChanges,
+    }),
+  }))
+  return res.blob()
+}
