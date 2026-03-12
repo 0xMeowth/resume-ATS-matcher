@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass
+from typing import Optional
+
+import numpy as np
 
 from ats_matcher.models import PhraseMatch, ResumeData, RewriteSuggestion
 
@@ -10,14 +13,17 @@ from ats_matcher.models import PhraseMatch, ResumeData, RewriteSuggestion
 class ResumeEntry:
     file_bytes: bytes
     resume_data: ResumeData
+    filename: str
 
 
 @dataclass
 class AnalysisEntry:
     resume_id: str
     jd_text: str
+    jd_url: str | None
     skill_matches: list[PhraseMatch]
     rewrite_suggestions: list[RewriteSuggestion]
+    doc_embedding: Optional[np.ndarray] = None
 
 
 def new_id() -> str:

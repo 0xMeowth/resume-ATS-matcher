@@ -8,10 +8,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from ats_matcher.embedding_engine import EmbeddingEngine
 from ats_matcher.jd_parser import JDParser
 from backend.routers import router
+from db.connection import get_connection
+from db.migrate import apply_schema
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Ensure DB schema exists before serving requests
+    conn = get_connection()
+    apply_schema(conn)
+    conn.close()
+
     app.state.jd_parser = JDParser()
     app.state.embedding_engine = EmbeddingEngine()
     app.state.resume_store = {}

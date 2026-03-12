@@ -7,6 +7,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ats_matcher.exporter import Exporter
+from db.writer import log_export
 from ats_matcher.matching_engine import MatchingEngine
 from ats_matcher.phrase_ranker import rank_phrases_tfidf, select_phrases_mmr
 from ats_matcher.resume_parser import ResumeParser
@@ -109,6 +110,7 @@ async def upload_resume(request: Request, file: UploadFile):
     request.app.state.resume_store[resume_id] = ResumeEntry(
         file_bytes=file_bytes,
         resume_data=resume_data,
+        filename=file.filename or "resume",
     )
 
     return ResumeUploadResponse(
@@ -215,8 +217,10 @@ def analyze_jd(body: AnalyzeRequest, request: Request):
     request.app.state.analysis_store[analysis_id] = AnalysisEntry(
         resume_id=body.resume_id,
         jd_text=raw_text,
+        jd_url=body.jd_url,
         skill_matches=skill_matches,
         rewrite_suggestions=suggestions,
+        doc_embedding=doc_embedding,
     )
 
     return AnalyzeResponse(
@@ -260,6 +264,14 @@ def export_resume(body: ExportRequest, request: Request):
         resume_entry.file_bytes,
         resume_entry.resume_data,
         body.accepted_changes,
+    )
+
+    log_export(
+        resume_id=body.resume_id,
+        resume_entry=resume_entry,
+        analysis_entry=analysis_entry,
+        exported_docx=docx_bytes,
+        accepted_changes=body.accepted_changes,
     )
 
     return Response(

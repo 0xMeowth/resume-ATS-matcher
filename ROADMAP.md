@@ -21,9 +21,9 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 2c: React frontend scaffold | done | Vite + React; 5-step wizard; `frontend/src/`; build verified |
 | 2d: Wire + smoke-test | done | End-to-end flow verified manually |
 | 2e: Containerize / deploy config | done | `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`, `frontend/nginx.conf`, `.dockerignore`; model cache via named volume |
-| 3a: Schema + migration script | pending | |
-| 3b: DB logging in FastAPI | pending | |
-| 3c: sqlite-vec extension | pending | |
+| 3a: Schema + migration script | done | `db/migrate.py` + `db/connection.py`; 3 tables (jobs, resumes, cv_pairs) + 4 indexes; idempotent; verified |
+| 3b: DB logging in FastAPI | done | `db/writer.py` log_export(); called from export endpoint; lifespan auto-migrates on startup; integration tested |
+| 3c: sqlite-vec extension | done | `cv_pair_embeddings` vec0 virtual table (FLOAT[384]); `_load_vec()` in connection.py; embedding written in log_export(); integration tested |
 | 4a: Seed script | pending | |
 | 4b: Vector search endpoint | pending | |
 | 4c: Ollama rewrite integration | pending | |

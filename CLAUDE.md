@@ -28,6 +28,12 @@ cd frontend && npm install && npm run dev
 # UI at http://localhost:5173
 ```
 
+**Database migration (Phase 3+):**
+```bash
+uv run python db/migrate.py
+# ATS_DB_PATH=/custom/path.db uv run python db/migrate.py
+```
+
 **Run (Docker Compose — both services):**
 ```bash
 docker compose up --build
