@@ -87,10 +87,10 @@ with st.sidebar:
         st.rerun()
 
 
-st.subheader("1) Upload resume (.docx)")
+st.subheader("1) Upload resume (.docx or .pdf)")
 uploader_key = st.session_state.get("uploader_key", 0)
 resume_file = st.file_uploader(
-    "Resume (.docx)", type=["docx"], key=f"resume_upload_{uploader_key}"
+    "Resume (.docx or .pdf)", type=["docx", "pdf"], key=f"resume_upload_{uploader_key}"
 )
 if resume_file:
     from ats_matcher.resume_parser import ResumeParser
@@ -102,6 +102,11 @@ if resume_file:
     st.session_state["resume_bytes"] = resume_bytes
     clear_analysis_state()
 
+    if resume_data.low_confidence:
+        st.warning(
+            "PDF input: parsing accuracy may be lower than .docx. "
+            "Export will always produce a .docx file."
+        )
     st.success("Resume parsed")
     with st.expander("Parsed structure"):
         for section in resume_data.sections:

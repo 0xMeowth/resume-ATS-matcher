@@ -29,6 +29,7 @@ class Section:
 class ResumeData:
     sections: List[Section]
     bullet_index: Dict[str, Bullet]
+    low_confidence: bool = False
 
 
 @dataclass

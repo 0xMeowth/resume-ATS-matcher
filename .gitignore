@@ -3,4 +3,5 @@ __pycache__/
 .venv/
 .env
 .streamlit/secrets.toml
-.ruff_cache/
+.ruff_cache/*.egg-info/
+.cache/

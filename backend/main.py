@@ -1,0 +1,22 @@
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from ats_matcher.embedding_engine import EmbeddingEngine
+from ats_matcher.jd_parser import JDParser
+from backend.routers import router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.jd_parser = JDParser()
+    app.state.embedding_engine = EmbeddingEngine()
+    app.state.resume_store = {}
+    app.state.analysis_store = {}
+    yield
+
+
+app = FastAPI(title="Resume ATS Matcher API", version="0.1.0", lifespan=lifespan)
+app.include_router(router, prefix="/api")
