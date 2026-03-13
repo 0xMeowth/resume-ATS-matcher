@@ -1,13 +1,8 @@
-import React, { useState } from 'react'
+import React from 'react'
 
-export default function Step4Review({ suggestions, onDone }) {
-  const [edits, setEdits] = useState(() =>
-    Object.fromEntries(suggestions.map(s => [s.bullet_id, s.original_text]))
-  )
-  const [accepted, setAccepted] = useState({})
-
+export default function Step4Review({ suggestions, edits, onEditChange, acceptedChanges, onAcceptChange, onDone }) {
   function toggleAccept(bulletId, checked) {
-    setAccepted(a => {
+    onAcceptChange(a => {
       const next = { ...a }
       if (checked) next[bulletId] = edits[bulletId]
       else delete next[bulletId]
@@ -16,8 +11,8 @@ export default function Step4Review({ suggestions, onDone }) {
   }
 
   function updateEdit(bulletId, text) {
-    setEdits(e => ({ ...e, [bulletId]: text }))
-    setAccepted(a => {
+    onEditChange(e => ({ ...e, [bulletId]: text }))
+    onAcceptChange(a => {
       if (bulletId in a) return { ...a, [bulletId]: text }
       return a
     })
@@ -28,7 +23,7 @@ export default function Step4Review({ suggestions, onDone }) {
       <div className="step">
         <h2>4) Review suggestions</h2>
         <p>No suggestions generated for this JD.</p>
-        <button onClick={() => onDone({})}>Proceed to export →</button>
+        <button onClick={onDone}>Proceed to export →</button>
       </div>
     )
   }
@@ -36,7 +31,7 @@ export default function Step4Review({ suggestions, onDone }) {
   return (
     <div className="step">
       <h2>4) Review suggestions</h2>
-      <p>{Object.keys(accepted).length} of {suggestions.length} changes accepted</p>
+      <p>{Object.keys(acceptedChanges).length} of {suggestions.length} changes accepted</p>
 
       {suggestions.map((s, i) => (
         <div key={s.bullet_id} className="suggestion-card">
@@ -47,13 +42,13 @@ export default function Step4Review({ suggestions, onDone }) {
           <p className="hint">{s.suggestion_text}</p>
           <textarea
             rows={3}
-            value={edits[s.bullet_id]}
+            value={edits[s.bullet_id] ?? s.original_text}
             onChange={e => updateEdit(s.bullet_id, e.target.value)}
           />
           <label>
             <input
               type="checkbox"
-              checked={!!accepted[s.bullet_id]}
+              checked={!!acceptedChanges[s.bullet_id]}
               onChange={e => toggleAccept(s.bullet_id, e.target.checked)}
             />
             {' '}Accept this change
@@ -61,8 +56,8 @@ export default function Step4Review({ suggestions, onDone }) {
         </div>
       ))}
 
-      <button onClick={() => onDone(accepted)}>
-        Apply {Object.keys(accepted).length} change{Object.keys(accepted).length !== 1 ? 's' : ''} & export →
+      <button onClick={onDone}>
+        Apply {Object.keys(acceptedChanges).length} change{Object.keys(acceptedChanges).length !== 1 ? 's' : ''} & export →
       </button>
     </div>
   )

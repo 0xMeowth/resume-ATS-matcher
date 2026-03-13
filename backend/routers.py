@@ -138,7 +138,7 @@ async def upload_resume(request: Request, file: UploadFile):
 # ── JD analyze ────────────────────────────────────────────────────────────────
 
 @router.post("/jd/analyze", response_model=AnalyzeResponse)
-def analyze_jd(body: AnalyzeRequest, request: Request):
+async def analyze_jd(body: AnalyzeRequest, request: Request):
     resume_entry = request.app.state.resume_store.get(body.resume_id)
     if resume_entry is None:
         raise HTTPException(status_code=404, detail="resume_id not found")
@@ -211,7 +211,7 @@ def analyze_jd(body: AnalyzeRequest, request: Request):
         rerank_top_k=cfg.rerank_top_k,
     )
 
-    suggestions = RewriteEngine().generate(skill_matches, resume_data)
+    suggestions = await RewriteEngine().generate_async(skill_matches, resume_data)
 
     analysis_id = new_id()
     request.app.state.analysis_store[analysis_id] = AnalysisEntry(

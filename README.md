@@ -127,6 +127,45 @@ Full API contract: [`docs/api-contract.md`](docs/api-contract.md)
 
 ---
 
+## Ollama (AI bullet rewrites)
+
+The rewrite engine calls a local [Ollama](https://ollama.com) instance to rewrite resume bullets so they incorporate missing keywords naturally. If Ollama is not running, the engine silently falls back to placeholder hints (`"Add keyword: X"`) — the rest of the app works normally.
+
+### Setup
+
+1. [Install Ollama](https://ollama.com/download) and pull a model:
+   ```bash
+   ollama pull llama3.2
+   ```
+2. Start Ollama (runs on `http://localhost:11434` by default):
+   ```bash
+   ollama serve
+   ```
+3. Run the backend as usual — rewrites are enabled automatically.
+
+### Configuration
+
+| Environment variable | Default | Description |
+|---------------------|---------|-------------|
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
+| `OLLAMA_MODEL` | `llama3.2` | Model name (any model pulled in Ollama) |
+| `OLLAMA_TIMEOUT` | `30` | Per-request timeout in seconds |
+
+Example — use a different model:
+```bash
+OLLAMA_MODEL=mistral uv run uvicorn backend.main:app --reload --port 8000
+```
+
+For Docker Compose, set these in a `.env` file at the project root:
+```
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL=llama3.2
+```
+
+> All Ollama calls are made concurrently (`asyncio.gather`) so the analyze step does not add N×latency for N missing skills.
+
+---
+
 ## Running tests
 
 ```bash
@@ -145,11 +184,10 @@ uv run pytest -v                       # verbose
 1. **Parse resume** — detects `.docx` vs `.pdf` by magic bytes; extracts sections → roles → bullets with stable IDs
 2. **Parse JD** — spaCy (`en_core_web_sm`) + ESCO entity ruler extracts skill candidates; configurable stoplist and allowlist
 3. **Rank & embed** — TF-IDF, MMR, or Hybrid ranking selects top-K skill terms; `all-MiniLM-L6-v2` encodes skills and bullets
-4. **Match** — classifies each skill as `exact`, `semantic_strong`, `semantic_weak`, or `missing`; stub rewrite hints generated
+4. **Match** — classifies each skill as `exact`, `semantic_strong`, `semantic_weak`, or `missing`; Ollama rewrites missing/weak bullets
 5. **Export** — user-accepted bullet edits applied back to the original `.docx`
 
-> **Note:** The rewrite engine currently generates placeholder hints ("Add keyword: X"). Ollama-based rewrites are planned for Phase 4.
-> **Note:** PDF input sets a `low_confidence` flag — parsing accuracy is lower than `.docx`. A full PDF accuracy audit is planned for Phase 5.
+> **Note:** PDF input sets a `low_confidence` flag — parsing accuracy is lower than `.docx`. A full PDF accuracy audit is planned for Phase 6.
 
 ---
 

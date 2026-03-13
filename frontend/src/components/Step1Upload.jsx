@@ -1,8 +1,7 @@
 import React, { useState } from 'react'
 import { uploadResume } from '../api'
 
-export default function Step1Upload({ onDone }) {
-  const [file, setFile] = useState(null)
+export default function Step1Upload({ file, onFileChange, onDone }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -28,8 +27,9 @@ export default function Step1Upload({ onDone }) {
         <input
           type="file"
           accept=".docx,.pdf"
-          onChange={e => setFile(e.target.files[0] || null)}
+          onChange={e => onFileChange(e.target.files[0] || null)}
         />
+        {file && <p className="muted">Selected: {file.name}</p>}
         <button type="submit" disabled={!file || loading}>
           {loading ? 'Parsing…' : 'Upload & parse'}
         </button>

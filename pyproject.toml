@@ -22,7 +22,11 @@ dependencies = [
     "uvicorn>=0.41.0",
     "python-multipart>=0.0.22",
     "sqlite-vec>=0.1.6",
+    "httpx>=0.28.1",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [tool.setuptools.packages.find]
 where = ["src", "."]
@@ -31,4 +35,5 @@ exclude = ["tests*", "scripts*", "frontend*", "config*", "docs*", "data*"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
 ]

@@ -14,7 +14,7 @@ const TYPE_CLASS = {
   missing: 'tag-missing',
 }
 
-export default function Step3Coverage({ skillMatches, debugEvents, onNext }) {
+export default function Step3Coverage({ skillMatches, debugEvents, stale, onNext }) {
   const [showDebug, setShowDebug] = useState(false)
 
   const sorted = [...skillMatches].sort((a, b) => {
@@ -30,6 +30,10 @@ export default function Step3Coverage({ skillMatches, debugEvents, onNext }) {
   return (
     <div className="step">
       <h2>3) Coverage report</h2>
+
+      {stale && (
+        <p className="warning stale-warning">Job description has changed since this report was generated. Re-run analysis on step 2 to refresh.</p>
+      )}
 
       <div className="summary-row">
         {['exact', 'semantic_strong', 'semantic_weak', 'missing'].map(t => (

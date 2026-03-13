@@ -24,11 +24,11 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 3a: Schema + migration script | done | `db/migrate.py` + `db/connection.py`; 3 tables (jobs, resumes, cv_pairs) + 4 indexes; idempotent; verified |
 | 3b: DB logging in FastAPI | done | `db/writer.py` log_export(); called from export endpoint; lifespan auto-migrates on startup; integration tested |
 | 3c: sqlite-vec extension | done | `cv_pair_embeddings` vec0 virtual table (FLOAT[384]); `_load_vec()` in connection.py; embedding written in log_export(); integration tested |
-| 4a: Seed script | pending | |
-| 4b: Vector search endpoint | pending | |
-| 4c: Ollama rewrite integration | pending | |
-| 4d: End-to-end RAG flow | pending | |
-| 5: PDF accuracy audit | pending | Blocked on real-world usage data |
+| 4a: Ollama rewrite integration | done | httpx + asyncio.gather; graceful fallback to stub on Ollama error; 4 tests |
+| 5a: Seed script | pending | Blocked — needs real export data in DB first |
+| 5b: Vector search endpoint | pending | Blocked — needs seed data |
+| 5c: End-to-end RAG flow | pending | Blocked — needs seed data |
+| 6: PDF accuracy audit | pending | Blocked on real-world usage data |
 
 ---
 
@@ -40,8 +40,9 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 1 | Debloat + PDF input | None — do first |
 | 2 | FastAPI + React migration | Phase 1 done |
 | 3 | SQLite logging DB | Phase 2 done |
-| 4 | RAG + Ollama rewrite | Phase 3 + data in DB |
-| 5 | PDF parsing accuracy audit & tuning | Phase 1d shipped + real-world usage data |
+| 4 | Ollama rewrite | Phase 3 done |
+| 5 (blocked) | RAG + similarity search | Phase 3 done + real usage data in DB |
+| 6 | PDF parsing accuracy audit | Phase 1d shipped + real-world usage data |
 
 Within-phase parallelism:
 - Phase 1: Debloat and PDF support are independent.
@@ -118,27 +119,36 @@ cv_pairs (id, job_id, baseline_resume_id, exported_docx BLOB, accepted_changes J
 
 ---
 
-## Phase 4 — RAG + Intelligence
+## Phase 4 — Ollama Rewrite
 
-### Stage 4a: Seed script
-- Import existing (JD, edited_CV) pairs you already have manually.
-
-### Stage 4b: Vector search endpoint
-- `POST /api/jd/similar` — embed new JD's skill terms, query sqlite-vec, return top-K past pairs.
-
-### Stage 4c: Ollama rewrite integration
+### Stage 4a: Ollama rewrite integration
 - Replace `RewriteEngine.generate()` stub with async Ollama call.
 - Prompt: given `original_bullet` + `target_keyword` → rewrite bullet.
-
-### Stage 4d: End-to-end RAG flow
-- On new JD, auto-suggest the most similar past exported CV as the baseline.
-- User can accept or upload their own baseline instead.
+- Surface generated rewrites in Step 4 of the React wizard.
 
 ---
 
-## Phase 5 — PDF Parsing Accuracy Audit
+## Phase 5 — RAG + Similarity Search
 
-> Dependency: Phase 1d shipped (basic PDF support). Do this after real-world usage reveals patterns.
+> **BLOCKED:** Do not start until real (JD, edited_CV) export pairs exist in the DB. Cold-start makes similarity search useless without seed data.
+
+### Stage 5a: Seed script
+- Export several real (JD, edited_CV) pairs through the app first.
+- Optionally write a one-off import script for existing pairs.
+
+### Stage 5b: Vector search endpoint
+- `POST /api/jd/similar` — embed new JD's skill terms, query sqlite-vec, return top-K past pairs.
+- Filter candidates by role/domain to avoid seniority-level mismatches.
+
+### Stage 5c: End-to-end RAG flow
+- On new JD, auto-suggest the most similar past exported CV as the baseline.
+- User can accept the suggestion or upload their own baseline instead.
+
+---
+
+## Phase 6 — PDF Parsing Accuracy Audit
+
+> Dependency: Phase 1d shipped (basic PDF support). Do this after real-world usage reveals patterns. Formerly Phase 5.
 
 Known issues to investigate and tune:
 - **Merged lines:** pdfplumber may concatenate adjacent columns or header/footer text into bullets.
@@ -156,9 +166,9 @@ Suggested audit approach:
 
 ## Architectural Notes
 
-**JD crawler:** LinkedIn, Greenhouse, Workday, Lever all use SPAs — BeautifulSoup won't work. Scope as a separate optional script requiring Playwright, not a core pipeline dependency. ToS and rate limits apply. **For all phases up to and including Phase 4, use fixed JD text fixtures (pasted or stored as `.txt` files in `tests/fixtures/`) — do not build or depend on a live crawler. The crawler is a Phase 5+ concern.**
+**JD crawler:** LinkedIn, Greenhouse, Workday, Lever all use SPAs — BeautifulSoup won't work. Scope as a separate optional script requiring Playwright, not a core pipeline dependency. ToS and rate limits apply. **For all phases up to and including Phase 5, use fixed JD text fixtures (pasted or stored as `.txt` files in `tests/fixtures/`) — do not build or depend on a live crawler. The crawler is a Phase 6+ concern.**
 
-**Rewrite engine is a stub:** `rewrite_engine.py` currently generates `"Add keyword: X"`. Step 4 adds near-zero value until Ollama integration (Stage 4c). Be honest about this in README/portfolio writeup.
+**Rewrite engine is a stub:** `rewrite_engine.py` currently generates `"Add keyword: X"`. Step 4 adds near-zero value until Ollama integration (Stage 4a). Be honest about this in README/portfolio writeup.
 
 **EmbeddingEngine caching:** Currently instantiated fresh inside the "Analyze JD" button handler with no `@st.cache_resource`. Becomes a startup singleton in FastAPI — not an issue after Phase 2.
 
