@@ -7,3 +7,5 @@ __pycache__/
 .cache/
 frontend/node_modules/
 data/
+tests/fixtures/
+tests/*.csv

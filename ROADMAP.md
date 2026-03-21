@@ -34,7 +34,7 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 7c: Restore light_head + domain_stoplist; add noise terms | done | Reverted merge; restored light_head + domain_stoplist; added willingness/engineers/programming to domain_stoplist only |
 | 8a: BGE model swap | done | none | BAAI/bge-small-en-v1.5; asymmetric BGE_QUERY_PREFIX for skill + doc embeddings; bullets unprefixed |
 | 8b: Feedback schema + API | done | none | skill_feedback table + label index; log_feedback() in writer.py; POST /api/feedback endpoint |
-| 8c: Feedback UI | done | none | +/- buttons per row in Coverage tab; fires POST /api/feedback; toggles local state; analysisId threaded from App.jsx |
+| 8c: Feedback UI | skipped | none | Feedback collection deprioritised; UI commented out, backend intact (endpoint + DB table preserved) |
 | 8d: Cross-encoder reranker | done | none | cross-encoder/ms-marco-MiniLM-L-6-v2; opt-in via USE_CROSS_ENCODER=1; sigmoid-normalised scores passed to thresholds |
 | 8e: Fine-tune bi-encoder | blocked | none | Needs ~100 skill_feedback rows; builds triplets + MultipleNegativesRankingLoss; saves to .cache/ats_matcher/finetuned_model/ |
 | 9a: Text preprocessing (HTML, URLs, emails, slash-compounds) | done | `_preprocess_text()` strips HTML/URLs/emails; slash-compound tokenizer rules; 4 new tests |
@@ -53,6 +53,13 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 10h: Semantic hint state in keyword panel | done | 4th amber state for semantic_strong from Step 3; static, not recomputed |
 | 10i: Amber highlight on semantic bullets | done | Amber left border on evidence bullets; tooltip lists matched keywords |
 | 10j: Save parsing concern + ROADMAP backlog | done | Memory + backlog item for .docx wrapped bullet parsing bug |
+| 11a: Fetch test fixtures + baseline | done | 6 PDF resumes downloaded; baseline JSON + FAILURE_MODES.md |
+| 11b: Rich PDF extraction (Line dataclass) | done | `_extract_lines_from_pdf()` with word-level x0/font_size/bold/bullet/y_gap |
+| 11c: Multi-signal heading detection (PDF) | done | 5 signals: font size, bold, keyword, ALL-CAPS, y_gap; ≥2 agree or font ≥4pt |
+| 11d: Indentation-aware bullet + continuation (PDF) | done | x0 clustering; continuation merging; sub-bullet (∗) support |
+| 11e: Port fixes to DOCX path | done | Continuation merging via `_is_continuation()`; keyword heading detection |
+| 11f: Regression tests | done | 15 new tests with real PDF fixtures; 48 total passing |
+| 11g: Update ROADMAP + cleanup | done | Phase 11 stages added; backlog removed |
 
 ---
 
@@ -69,6 +76,7 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 6 | PDF parsing accuracy audit | Phase 1d shipped + real-world usage data |
 | 9 | spaCy extraction quality (preprocessing, stopwords, logic fixes, MCF dictionary) | Phase 7/8 done; discovered via 20-JD comparison |
 | 10 | Manual review page (replace Step 4 with editable CV + floating keyword panel) | Phase 9 done |
+| 11 | Resume parsing robustness (PDF-first: rich extraction, multi-signal headings, continuation merging) | Phase 10 done |
 
 Within-phase parallelism:
 - Phase 1: Debloat and PDF support are independent.
@@ -360,8 +368,3 @@ Three-source architecture:
 
 **BYO model abstraction:** Ollama first. Only abstract the model interface once 2+ backends are actually working.
 
----
-
-## Backlog
-
-- [ ] **Resume parsing robustness** — .docx wrapped bullets split into orphan role titles (continuation `<w:p>` elements lack `numPr`). Fix: merge continuation lines. Needs robustness testing with 5-10 diverse CVs (PDF + docx, single/multi-column, different Word templates). Fallback option: template CV workflow (high friction, last resort). Also consider UI-side fix: let users merge/split bullets manually in Step 4. Discovered 2026-03-21.
