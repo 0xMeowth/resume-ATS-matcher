@@ -30,7 +30,9 @@ A human-in-the-loop resume tailoring tool. The user uploads a resume, provides a
   - **ESCO** (~6,000 skills) — the European Skills/Competences taxonomy, an official EU standard
   - **MCF** (~780 skills) — scraped from Singapore's MyCareersFuture job portal, where the government pre-tags each listing with skills
   - **Custom** (~22 skills) — manually curated terms we found through testing (e.g. "model registry", "agent orchestration")
-- Candidates go through **filtering** — we remove generic words ("experience", "team", "bachelor's degree"), company names, and anything too short or vague.
+- Candidates go through **filtering** — we remove generic words ("experience", "team", "bachelor's degree"), company names, and anything too short or vague. This filtering has two layers that work together:
+  - **`exclude_list`** — exact string match. If the entire extracted phrase (or every individual word in it) is in the list, it's dropped. Works well for clear-cut noise like "shortlisted", "hybrid work", "phd".
+  - **`light_head` stripping + `vague_outcome_nouns`** — handles cases where spaCy's grammar-based chunking produces noise phrases. For example, `full-time` is tokenised by spaCy as `full` + `-` + `time`, so "full-time work arrangements" becomes the noun chunk `"full time work arrangements"` with head noun `"arrangements"`. Since `"arrangements"` is in `light_head`, we strip it — leaving `"full time work"`. Then, since the last word `"work"` is in `vague_outcome_nouns`, the whole phrase is dropped. This two-step approach is more robust than trying to enumerate every possible "full time work X" variant in `exclude_list`.
 - Finally, **deduplication** collapses near-duplicates. "strategy frameworks" and "strategy framework" become one entry. If "data governance" only appears inside "data governance frameworks", we keep the longer one. But if "data governance" also appears on its own somewhere in the JD, we keep both.
 
 ### Step 2: Matching skills against your resume
@@ -205,7 +207,7 @@ The old Step 4 (AI suggestions) is preserved as `Step4ReviewLegacy.jsx` but not 
                                       ↑ position: sticky
 ```
 
-- **Left (~65%):** Structured editable resume. Section headers and role titles are read-only labels. Each bullet is an editable text field keyed by `bullet_id`.
+- **Left (~65%):** Structured editable resume. Section headers and role titles are editable inputs. Each role has a single free-text textarea containing all bullets (one per line).
 - **Right (~30%):** Floating keyword panel (`position: sticky`). Shows all extracted JD keywords with live match status.
 
 ### Design decisions
@@ -222,6 +224,8 @@ The old Step 4 (AI suggestions) is preserved as `Step4ReviewLegacy.jsx` but not 
 4. **Resume sections are mutable state.** The full `sections` array (from the upload response) is lifted into `App.jsx`. On export, we diff current bullet texts against the originals to build the `acceptedChanges` map that the export endpoint expects.
 
 5. **Step 3 (Coverage) is kept as-is.** It serves as a detailed debug/analysis view with similarity scores and +/- feedback. The new Step 4 is the clean, user-facing editing experience. Step 3 may be hidden in production later.
+
+6. **Free-text per role, not per-bullet textareas.** Originally each bullet was an individual `<textarea>` keyed by `bullet_id`. This was changed to one `<textarea>` per role (bullets joined by `\n`) for three reasons: (a) export target is PDF (render from scratch) so there's no need to map `bullet_id → paragraph_index` back to a `.docx`; (b) future section-level AI rewrite (BYO API keys / Ollama) needs to propose full section rewrites — the natural UI is a side-by-side diff where accepting is a single textarea replacement; (c) free-text gives add/delete/reorder via normal text editing with zero extra UI machinery. Keyword matching still works against the concatenated resume text.
 
 ---
 

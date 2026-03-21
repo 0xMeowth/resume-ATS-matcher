@@ -61,6 +61,13 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 11f: Regression tests | done | 15 new tests with real PDF fixtures; 48 total passing |
 | 11g: Update ROADMAP + cleanup | done | Phase 11 stages added; backlog removed |
 | 12a: Keyword panel substring dedup (frontend) | done | Backend `_suppress_substrings` intentionally keeps both "machine learning" and "machine learning models" when the shorter phrase appears independently in the JD (C1 independence clause, `jd_parser.py:588`). This double-counts in the panel. Fix: client-side whole-word substring filter in `KeywordPanel.jsx` — longer phrase kept, shorter hidden. Backend scores unchanged. Future "repeated phrase ranking" feature should revisit this: shorter phrase occurrence count may be a useful signal. See `docs/architecture.md` § Skill extraction design decisions. |
+| 12b: Rename domain_stoplist to exclude_list | done | YAML key + all Python references renamed; YAML reorganised into 7 comment sections |
+| 12c: Keyword panel whole-word matching | done | `resumeLower.includes()` → regex with `(?<![a-zA-Z0-9])...(?![a-zA-Z0-9])` lookahead/lookbehind; fixes "SAP" matching "sapling" |
+| 12d: Skill extraction config improvements | done | `work` added to `vague_outcome_nouns`; `candidate`, `position`, `role`, `arrangement(s)` added to `light_head`; soft skill terms added to `exclude_list`; documented filtering pipeline in `architecture.md` |
+| 13a: Typography + design tokens + header fix + frosted glass | done | Inter font; CSS variables; header spacing; backdrop-filter blur |
+| 13b: Keyword panel UX (x button, transitions, entrance) | done | Always-visible dismiss button; 300ms colour transitions; staggered slide-in |
+| 13c: Editable headers + free-text per role | done | Section/role titles → `<input>`; per-bullet textareas → one `<textarea>` per role (see architecture.md § design decision) |
+| 13d: Keyword match flash animation | done | 600ms green flash on keyword panel item + role textarea when keyword transitions to matched |
 
 ---
 

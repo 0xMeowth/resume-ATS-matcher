@@ -10,7 +10,7 @@ import yaml
 @dataclass(frozen=True)
 class SkillExtractionConfig:
     light_head: set[str]
-    domain_stoplist: set[str]
+    exclude_list: set[str]
     single_token_allowlist: set[str]
     discourse_markers: list[str]
     vague_outcome_nouns: set[str]
@@ -36,7 +36,7 @@ def load_skill_extraction_config(
 
     return SkillExtractionConfig(
         light_head=_as_normalized_set(payload.get("light_head", [])),
-        domain_stoplist=_as_normalized_set(payload.get("domain_stoplist", [])),
+        exclude_list=_as_normalized_set(payload.get("exclude_list", [])),
         single_token_allowlist=_as_normalized_set(
             payload.get("single_token_allowlist", [])
         ),

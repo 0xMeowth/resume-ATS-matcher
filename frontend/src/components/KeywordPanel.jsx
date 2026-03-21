@@ -1,6 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react'
 
-export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgnore, resumeText }) {
+export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgnore, resumeText, flashedPhrases }) {
   const scrollRef = useRef(null)
   const [showTopFade, setShowTopFade] = useState(false)
   const [showBottomFade, setShowBottomFade] = useState(true)
@@ -13,11 +13,12 @@ export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgno
   }, [])
 
   const resumeLower = (resumeText || '').toLowerCase()
+  const _escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
   const keywords = skillMatches.map(m => {
     const phrase = m.phrase
     const ignored = ignoredSkills.has(phrase)
-    const exactMatch = !ignored && resumeLower.includes(phrase.toLowerCase())
+    const exactMatch = !ignored && new RegExp(`(?<![a-zA-Z0-9])${_escRe(phrase.toLowerCase())}(?![a-zA-Z0-9])`).test(resumeLower)
     // Static semantic hint from Step 3 analysis (not recomputed on edit)
     const semanticHint = !ignored && !exactMatch &&
       (m.match_type === 'semantic_strong' || m.match_type === 'exact')
@@ -39,7 +40,6 @@ export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgno
   // phrase. The longer phrase is kept; the shorter is hidden. Backend scores are unaffected.
   // NOTE: if a future "repeated phrase ranking" feature is added (more occurrences = higher
   // priority), revisit this dedup — the shorter phrase occurrence count may still be useful.
-  const _escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const dedupedKeywords = keywords.filter(k =>
     !keywords.some(other =>
       other.phrase !== k.phrase &&
@@ -65,17 +65,19 @@ export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgno
 
       {showTopFade && <div className="kp-scroll-fade kp-scroll-fade-top" />}
       <ul className="kp-list">
-        {dedupedKeywords.map(k => {
+        {dedupedKeywords.map((k, index) => {
           let cls = 'kp-item'
           if (k.ignored) cls += ' kp-ignored'
           else if (k.exactMatch) cls += ' kp-matched'
           else if (k.semanticHint) cls += ' kp-semantic'
           else cls += ' kp-unmatched'
+          if (flashedPhrases && flashedPhrases.has(k.phrase)) cls += ' kp-flash'
 
           return (
             <li
               key={k.phrase}
               className={cls}
+              style={{ animationDelay: `${index * 30}ms` }}
               title={k.semanticHint ? 'Semantically covered — add exact phrase for ATS' : undefined}
             >
               <span className="kp-icon">

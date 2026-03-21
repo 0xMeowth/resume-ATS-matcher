@@ -3,7 +3,9 @@ __pycache__/
 .venv/
 .env
 .streamlit/secrets.toml
-.ruff_cache/*.egg-info/
+.ruff_cache/
+*.egg-info/
+*.db
 .cache/
 frontend/node_modules/
 data/

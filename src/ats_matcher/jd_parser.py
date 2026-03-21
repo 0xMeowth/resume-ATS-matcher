@@ -70,7 +70,7 @@ class JDParser:
         self._resolved_esco_version = None
         config = load_skill_extraction_config(skill_config_path)
         self.light_head = config.light_head
-        self.domain_stoplist = config.domain_stoplist
+        self.exclude_list = config.exclude_list
         self.single_token_allowlist = config.single_token_allowlist
         self.discourse_markers = config.discourse_markers
         self.vague_outcome_nouns = config.vague_outcome_nouns
@@ -168,9 +168,9 @@ class JDParser:
         if match:
             name = match.group(1).strip()
             tokens = re.findall(r"[a-z]+", name.lower())
-            # Filter out common company suffixes already in domain_stoplist
+            # Filter out common company suffixes already in exclude_list
             self._company_stopwords = {
-                t for t in tokens if len(t) > 2 and t not in self.domain_stoplist
+                t for t in tokens if len(t) > 2 and t not in self.exclude_list
             }
 
     def _install_slash_compound_tokenizer_rules(self) -> None:
@@ -320,7 +320,7 @@ class JDParser:
             candidate = self._normalize_candidate(token.text)
             if not candidate:
                 continue
-            if normalize_text(candidate) in self.domain_stoplist:
+            if normalize_text(candidate) in self.exclude_list:
                 logger.debug(json.dumps({"phase": "extraction", "source": "single_token", "candidate": candidate, "action": "dropped", "reason": "generic_nouns"}))
                 continue
             if self._allow_single_token(candidate):
@@ -434,13 +434,13 @@ class JDParser:
         if len(normalized) < 3:
             return "too_short"
 
-        if normalized in self.domain_stoplist:
+        if normalized in self.exclude_list:
             return "generic_nouns"
-        if all(token in self.domain_stoplist for token in tokens):
+        if all(token in self.exclude_list for token in tokens):
             return "all_tokens_generic_nouns"
 
         company_sw = getattr(self, "_company_stopwords", set())
-        if company_sw and all(token in company_sw or token in self.domain_stoplist for token in tokens):
+        if company_sw and all(token in company_sw or token in self.exclude_list for token in tokens):
             return "company_name"
 
         if len(tokens) > 1 and tokens[-1] in self.vague_outcome_nouns:
