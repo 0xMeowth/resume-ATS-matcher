@@ -24,6 +24,19 @@ export async function analyzeJD(resumeId, jdText, settings) {
   return res.json()
 }
 
+export async function submitFeedback(analysisId, skillPhrase, bulletText, label) {
+  await fetch(`${BASE}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      analysis_id: analysisId,
+      skill_phrase: skillPhrase,
+      bullet_text: bulletText,
+      label,
+    }),
+  })
+}
+
 export async function exportResume(resumeId, analysisId, acceptedChanges) {
   const res = await checkResponse(await fetch(`${BASE}/export`, {
     method: 'POST',

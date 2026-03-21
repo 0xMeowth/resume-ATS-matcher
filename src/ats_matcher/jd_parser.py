@@ -5,9 +5,13 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+import yaml
+
 import requests
 import spacy
 from bs4 import BeautifulSoup
+
+from pathlib import Path
 
 from ats_matcher.nlp.esco import build_entity_ruler_patterns, load_esco_skill_phrases
 from ats_matcher.nlp.skill_config import load_skill_extraction_config
@@ -17,6 +21,16 @@ TOOLISH_TOKEN_REGEX = re.compile(
     r"^(c\+\+|c#|\.net|node\.js|react\.js|next\.js|[a-z0-9]+[+#./&-][a-z0-9+#./&-]*)$",
     re.IGNORECASE,
 )
+
+_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
+_EMAIL_RE = re.compile(r"\S+@\S+\.\S+")
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+# Common slash-compounds to keep as single tokens
+_SLASH_COMPOUNDS = [
+    "CI/CD", "AI/ML", "ETL/ELT", "SaaS/PaaS", "IaaS/PaaS",
+    "TCP/IP", "I/O", "OT/IoT", "B2B/B2C", "UI/UX",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +57,15 @@ class JDParser:
         esco_cache_dir: str = ".cache/ats_matcher/esco",
         esco_skill_phrases: Optional[List[str]] = None,
         skill_config_path: Optional[str] = None,
+        mcf_skills_path: str = "config/mcf_skills.json",
+        custom_skills_path: str = "config/custom_skills.yaml",
     ) -> None:
         self.model_name = model_name
         self.selected_esco_version = selected_esco_version
         self.esco_cache_dir = esco_cache_dir
         self._esco_skill_phrases = esco_skill_phrases
+        self._mcf_skills_path = mcf_skills_path
+        self._custom_skills_path = custom_skills_path
         self._nlp = None
         self._resolved_esco_version = None
         config = load_skill_extraction_config(skill_config_path)
@@ -55,6 +73,7 @@ class JDParser:
         self.domain_stoplist = config.domain_stoplist
         self.single_token_allowlist = config.single_token_allowlist
         self.discourse_markers = config.discourse_markers
+        self.vague_outcome_nouns = config.vague_outcome_nouns
         self._leading_discourse_marker_regex = self._compile_leading_discourse_regex(
             self.discourse_markers
         )
@@ -68,7 +87,10 @@ class JDParser:
                 and "parser" not in self._nlp.pipe_names
             ):
                 self._nlp.add_pipe("sentencizer")
+            self._install_slash_compound_tokenizer_rules()
             self._install_esco_entity_ruler()
+            self._install_mcf_entity_ruler()
+            self._install_custom_entity_ruler()
         return self._nlp
 
     @property
@@ -100,12 +122,15 @@ class JDParser:
             logger.setLevel(logging.DEBUG)
 
         try:
+            jd_text = self._preprocess_text(jd_text)
+            self._current_jd_text = jd_text
             doc = self.nlp(jd_text)
             esco_skills = self._extract_esco_entities(doc)
             noun_chunk_skills = self._extract_clean_noun_chunks(doc)
             single_token_skills = self._extract_allowlisted_single_tokens(doc)
             combined = esco_skills + noun_chunk_skills + single_token_skills
             combined = dedupe_preserve_order(combined)
+            combined = self._lemma_dedup(combined)
             combined = self._suppress_substrings(combined, source="combined")
         finally:
             if capture is not None:
@@ -120,6 +145,41 @@ class JDParser:
         if capture is not None:
             result["debug_events"] = capture.events
         return result
+
+    def _preprocess_text(self, text: str) -> str:
+        """Clean raw JD text before spaCy processing.
+
+        Strips HTML tags, URLs, and email addresses. Extracts company name
+        from ``Company:`` header (added by fetch_jds.py) into per-call
+        stoplist. Preserves newlines for hard-break detection.
+        """
+        text = _HTML_TAG_RE.sub(" ", text)
+        text = _URL_RE.sub("", text)
+        text = _EMAIL_RE.sub("", text)
+        self._extract_company_stopwords(text)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
+    def _extract_company_stopwords(self, text: str) -> None:
+        """Parse ``Company: <name>`` header and add tokens to per-call stoplist."""
+        self._company_stopwords: set[str] = set()
+        match = re.search(r"^Company:\s*(.+)$", text, re.MULTILINE)
+        if match:
+            name = match.group(1).strip()
+            tokens = re.findall(r"[a-z]+", name.lower())
+            # Filter out common company suffixes already in domain_stoplist
+            self._company_stopwords = {
+                t for t in tokens if len(t) > 2 and t not in self.domain_stoplist
+            }
+
+    def _install_slash_compound_tokenizer_rules(self) -> None:
+        """Add special-case tokenizer rules so slash-compounds stay as one token."""
+        for compound in _SLASH_COMPOUNDS:
+            for form in (compound, compound.lower(), compound.upper()):
+                self._nlp.tokenizer.add_special_case(
+                    form, [{"ORTH": form}]
+                )
 
     def _fetch_url(self, url: str) -> str:
         response = requests.get(url, timeout=15)
@@ -153,10 +213,60 @@ class JDParser:
         )
         ruler.add_patterns(build_entity_ruler_patterns(phrases))
 
+    def _install_mcf_entity_ruler(self) -> None:
+        """Load MCF skill dictionary and add as entity ruler patterns."""
+        mcf_path = Path(self._mcf_skills_path)
+        if not mcf_path.exists():
+            return
+        if "mcf_skill_ruler" in self._nlp.pipe_names:
+            return
+
+        phrases = json.loads(mcf_path.read_text(encoding="utf-8"))
+        if not phrases:
+            return
+
+        ruler = self._nlp.add_pipe(
+            "entity_ruler",
+            name="mcf_skill_ruler",
+            config={"phrase_matcher_attr": "LOWER", "overwrite_ents": False},
+            after="esco_skill_ruler" if "esco_skill_ruler" in self._nlp.pipe_names else None,
+        )
+        ruler.add_patterns(build_entity_ruler_patterns(phrases, label="MCF_SKILL"))
+        logger.info("Loaded %d MCF skill patterns", len(phrases))
+
+    def _install_custom_entity_ruler(self) -> None:
+        """Load custom skill dictionary and add as entity ruler patterns."""
+        custom_path = Path(self._custom_skills_path)
+        if not custom_path.exists():
+            return
+        if "custom_skill_ruler" in self._nlp.pipe_names:
+            return
+
+        data = yaml.safe_load(custom_path.read_text(encoding="utf-8"))
+        phrases = data.get("skills", []) if data else []
+        if not phrases:
+            return
+
+        last_ruler = (
+            "mcf_skill_ruler" if "mcf_skill_ruler" in self._nlp.pipe_names
+            else "esco_skill_ruler" if "esco_skill_ruler" in self._nlp.pipe_names
+            else None
+        )
+        ruler = self._nlp.add_pipe(
+            "entity_ruler",
+            name="custom_skill_ruler",
+            config={"phrase_matcher_attr": "LOWER", "overwrite_ents": False},
+            after=last_ruler,
+        )
+        ruler.add_patterns(build_entity_ruler_patterns(phrases, label="CUSTOM_SKILL"))
+        logger.info("Loaded %d custom skill patterns", len(phrases))
+
+    _SKILL_ENTITY_LABELS = {"ESCO_SKILL", "MCF_SKILL", "CUSTOM_SKILL"}
+
     def _extract_esco_entities(self, doc) -> List[str]:
         phrases: List[str] = []
         for ent in doc.ents:
-            if ent.label_ != "ESCO_SKILL":
+            if ent.label_ not in self._SKILL_ENTITY_LABELS:
                 continue
             if "\n" in doc.text[ent.start_char : ent.end_char]:
                 logger.debug(json.dumps({"phase": "extraction", "source": "esco_entity", "candidate": ent.text, "action": "dropped", "reason": "crosses_newline"}))
@@ -164,17 +274,18 @@ class JDParser:
             candidate = self._normalize_candidate(ent.text)
             if not candidate:
                 continue
-            rejection_reason = self._candidate_rejection_reason(candidate)
-            if rejection_reason:
-                logger.debug(json.dumps({"phase": "extraction", "source": "esco_entity", "candidate": candidate, "action": "dropped", "reason": rejection_reason}))
-                continue
-            phrases.append(candidate)
-            keep_reason = (
-                "kept_allowlisted_short_token"
-                if self._is_allowlisted_short_token(candidate)
-                else "passed"
-            )
-            logger.debug(json.dumps({"phase": "extraction", "source": "esco_entity", "candidate": candidate, "action": "kept", "reason": keep_reason}))
+            for part in self._split_or_alternatives(candidate):
+                rejection_reason = self._candidate_rejection_reason(part)
+                if rejection_reason:
+                    logger.debug(json.dumps({"phase": "extraction", "source": "esco_entity", "candidate": part, "action": "dropped", "reason": rejection_reason}))
+                    continue
+                phrases.append(part)
+                keep_reason = (
+                    "kept_allowlisted_short_token"
+                    if self._is_allowlisted_short_token(part)
+                    else "passed"
+                )
+                logger.debug(json.dumps({"phase": "extraction", "source": "esco_entity", "candidate": part, "action": "kept", "reason": keep_reason}))
         phrases = dedupe_preserve_order(phrases)
         return self._suppress_substrings(phrases, source="esco_entity")
 
@@ -184,17 +295,18 @@ class JDParser:
             for candidate in self._clean_noun_chunk_candidates(chunk):
                 if not candidate:
                     continue
-                rejection_reason = self._candidate_rejection_reason(candidate)
-                if rejection_reason:
-                    logger.debug(json.dumps({"phase": "extraction", "source": "noun_chunk", "candidate": candidate, "action": "dropped", "reason": rejection_reason}))
-                    continue
-                phrases.append(candidate)
-                keep_reason = (
-                    "kept_allowlisted_short_token"
-                    if self._is_allowlisted_short_token(candidate)
-                    else "passed"
-                )
-                logger.debug(json.dumps({"phase": "extraction", "source": "noun_chunk", "candidate": candidate, "action": "kept", "reason": keep_reason}))
+                for part in self._split_or_alternatives(candidate):
+                    rejection_reason = self._candidate_rejection_reason(part)
+                    if rejection_reason:
+                        logger.debug(json.dumps({"phase": "extraction", "source": "noun_chunk", "candidate": part, "action": "dropped", "reason": rejection_reason}))
+                        continue
+                    phrases.append(part)
+                    keep_reason = (
+                        "kept_allowlisted_short_token"
+                        if self._is_allowlisted_short_token(part)
+                        else "passed"
+                    )
+                    logger.debug(json.dumps({"phase": "extraction", "source": "noun_chunk", "candidate": part, "action": "kept", "reason": keep_reason}))
         phrases = dedupe_preserve_order(phrases)
         return self._suppress_substrings(phrases, source="noun_chunk")
 
@@ -209,7 +321,7 @@ class JDParser:
             if not candidate:
                 continue
             if normalize_text(candidate) in self.domain_stoplist:
-                logger.debug(json.dumps({"phase": "extraction", "source": "single_token", "candidate": candidate, "action": "dropped", "reason": "domain_stoplist"}))
+                logger.debug(json.dumps({"phase": "extraction", "source": "single_token", "candidate": candidate, "action": "dropped", "reason": "generic_nouns"}))
                 continue
             if self._allow_single_token(candidate):
                 phrases.append(candidate)
@@ -262,7 +374,11 @@ class JDParser:
 
         surface = " ".join(token.text for token in tokens)
         candidate = self._normalize_candidate(surface)
-        return candidate or None
+        if not candidate:
+            return None
+        if len(candidate.split()) > 6:
+            return None
+        return candidate
 
     def _split_tokens_on_hard_break(self, tokens: List) -> List[List]:
         segments: List[List] = []
@@ -292,6 +408,14 @@ class JDParser:
             tokens = tokens[:-1]
         return tokens
 
+    def _split_or_alternatives(self, phrase: str) -> List[str]:
+        """Split 'Kafka OR Redis clusters' → ['Kafka', 'Redis clusters'].
+        Runs after _normalize_candidate; each part re-enters validation."""
+        if not re.search(r'\bOR\b', phrase, re.IGNORECASE):
+            return [phrase]
+        parts = re.split(r'\s+OR\s+', phrase, flags=re.IGNORECASE)
+        return [p.strip() for p in parts if p.strip()]
+
     def _normalize_candidate(self, text: str) -> str:
         text = re.sub(r"\s+", " ", text).strip(" ,.;:()[]{}")
         text = self._strip_discourse_markers(text)
@@ -303,6 +427,7 @@ class JDParser:
             return "empty_after_normalization"
 
         tokens = normalized.split()
+
         if len(tokens) == 1 and self._allow_single_token(candidate):
             return None
 
@@ -310,9 +435,21 @@ class JDParser:
             return "too_short"
 
         if normalized in self.domain_stoplist:
-            return "domain_stoplist"
+            return "generic_nouns"
         if all(token in self.domain_stoplist for token in tokens):
-            return "all_tokens_domain_stoplist"
+            return "all_tokens_generic_nouns"
+
+        company_sw = getattr(self, "_company_stopwords", set())
+        if company_sw and all(token in company_sw or token in self.domain_stoplist for token in tokens):
+            return "company_name"
+
+        if len(tokens) > 1 and tokens[-1] in self.vague_outcome_nouns:
+            has_toolish = any(
+                TOOLISH_TOKEN_REGEX.match(tok)
+                for tok in candidate.split()
+            )
+            if not has_toolish:
+                return "vague_head_noun"
 
         if len(tokens) < 2 and not self._allow_single_token(candidate):
             return "single_token_not_allowlisted"
@@ -330,6 +467,10 @@ class JDParser:
 
         uppercase_raw = re.sub(r"[^A-Za-z0-9+#.&/-]", "", raw)
         if uppercase_raw.isupper() and 2 <= len(uppercase_raw) <= 8:
+            return True
+
+        # Allow 3-char mixed-case abbreviations like VaR, DoS, PoW (first and last uppercase)
+        if re.match(r'^[A-Z][^A-Z][A-Z]$', raw.strip()):
             return True
         return False
 
@@ -368,21 +509,59 @@ class JDParser:
             re.IGNORECASE,
         )
 
+    def _is_prefix_acronym_of_longer(
+        self, short_norm: str, all_normalized: List[str]
+    ) -> bool:
+        """True if short_norm is an all-caps 2–5 char token AND
+        any longer candidate in all_normalized starts with 'short_norm '."""
+        compact = short_norm.replace(" ", "")
+        if not (compact.isupper() and 2 <= len(compact) <= 5):
+            return False
+        prefix = short_norm + " "
+        return any(
+            other != short_norm and other.startswith(prefix)
+            for other in all_normalized
+        )
+
+    def _lemma_dedup(self, phrases: List[str]) -> List[str]:
+        """Collapse near-duplicate phrases that differ only in inflection.
+
+        Uses spaCy lemmatization per word to build a canonical key for grouping.
+        Keeps the first surface form seen. Displayed output is never lemmatized.
+        """
+        seen_keys: dict[str, str] = {}  # lemma_key -> first surface form
+        result: List[str] = []
+        for phrase in phrases:
+            doc = self.nlp(phrase)
+            key = " ".join(token.lemma_.lower() for token in doc)
+            if key not in seen_keys:
+                seen_keys[key] = phrase
+                result.append(phrase)
+            else:
+                logger.debug(json.dumps({"phase": "dedupe", "source": "lemma_dedup", "candidate": phrase, "action": "dropped", "reason": f"lemma_duplicate_of:{seen_keys[key]}"}))
+        return result
+
     def _suppress_substrings(
         self,
         phrases: List[str],
         source: str = "unknown",
+        jd_text: Optional[str] = None,
     ) -> List[str]:
         kept: List[str] = []
         normalized = [normalize_text(phrase) for phrase in phrases]
+        if jd_text is None:
+            jd_text = getattr(self, "_current_jd_text", None)
+        jd_lower = jd_text.lower() if jd_text else None
 
         for idx, phrase in enumerate(phrases):
             short_norm = normalized[idx]
             if not short_norm:
                 continue
             if len(short_norm.split()) == 1 and self._allow_single_token(phrase):
-                kept.append(phrase)
-                continue
+                if not self._is_prefix_acronym_of_longer(short_norm, normalized):
+                    kept.append(phrase)
+                    continue
+                # fall through — subject to normal subsumption
             is_substring = False
             for jdx, other in enumerate(phrases):
                 if idx == jdx:
@@ -393,9 +572,23 @@ class JDParser:
                 if len(long_norm.split()) > 8:
                     continue
                 if re.search(rf"\b{re.escape(short_norm)}\b", long_norm):
+                    # C1: keep shorter phrase if it appears independently in the JD
+                    if jd_lower and self._phrase_appears_independently(
+                        short_norm, long_norm, jd_lower
+                    ):
+                        logger.debug(json.dumps({"phase": "dedupe", "source": source, "candidate": phrase, "action": "kept", "reason": f"independent_of:{other}"}))
+                        break
                     logger.debug(json.dumps({"phase": "dedupe", "source": source, "candidate": phrase, "action": "dropped", "reason": f"substring_of:{other}"}))
                     is_substring = True
                     break
             if not is_substring:
                 kept.append(phrase)
         return kept
+
+    @staticmethod
+    def _phrase_appears_independently(
+        short_norm: str, long_norm: str, jd_lower: str
+    ) -> bool:
+        """Return True if the short phrase appears in the text outside the long phrase."""
+        stripped = re.sub(rf"\b{re.escape(long_norm)}\b", "", jd_lower)
+        return bool(re.search(rf"\b{re.escape(short_norm)}\b", stripped))

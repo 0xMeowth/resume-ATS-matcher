@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -23,6 +24,13 @@ async def lifespan(app: FastAPI):
     app.state.embedding_engine = EmbeddingEngine()
     app.state.resume_store = {}
     app.state.analysis_store = {}
+
+    if os.environ.get("USE_CROSS_ENCODER") == "1":
+        from sentence_transformers import CrossEncoder
+        app.state.cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    else:
+        app.state.cross_encoder = None
+
     yield
 
 

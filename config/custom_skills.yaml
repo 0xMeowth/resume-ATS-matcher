@@ -1,0 +1,36 @@
+# Custom skill dictionary — third source alongside ESCO and MCF.
+#
+# Seeded from 20-JD comparison (spaCy vs JobBERT, 2026-03-21).
+# These are high-confidence terms that spaCy's en_core_web_sm missed due to:
+#   - Substring suppression (shorter phrase dropped when longer variant exists)
+#   - Noun chunk boundary errors (modern MLOps/AI terms not in spaCy's vocabulary)
+#
+# Add new terms here when discovered through analysis or user feedback.
+# Loaded as CUSTOM_SKILL entity ruler patterns in jd_parser.py.
+
+skills:
+  # Substring suppression victims — spaCy drops these when longer variants exist
+  - data governance
+  - feature engineering
+  - machine learning
+  - software architecture design
+  - performance optimization
+  - continuous deployment
+  - strategy framework
+  - program management
+  - version control
+  - data pipeline management
+  - data analysis
+  - data visualization
+  - data quality
+  - data engineering
+
+  # Modern MLOps/AI terms — en_core_web_sm doesn't parse these noun chunks
+  - model registry
+  - model versioning
+  - experiment tracking
+  - hybrid search
+  - similarity search
+  - vector databases
+  - agent orchestration
+  - streaming responses

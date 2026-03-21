@@ -1,11 +1,11 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import Step1Upload from './components/Step1Upload'
 import Step2JD from './components/Step2JD'
 import Step3Coverage from './components/Step3Coverage'
-import Step4Review from './components/Step4Review'
+import Step4Edit from './components/Step4Edit'
 import Step5Export from './components/Step5Export'
 
-const STEPS = ['Upload', 'Job Description', 'Coverage', 'Review', 'Export']
+const STEPS = ['Upload', 'Job Description', 'Coverage', 'Edit Resume', 'Export']
 
 const JD_DEFAULTS = {
   max_skill_terms: 120,
@@ -69,6 +69,10 @@ export default function App() {
   const [rewriteSuggestions, setRewriteSuggestions] = useState([])
   const [debugEvents, setDebugEvents] = useState(null)
 
+  // Resume sections (structured data from upload)
+  const [resumeSections, setResumeSections] = useState([])
+  const originalSectionsRef = useRef([])
+
   // Step 4 state (lifted so edits survive navigation)
   const [edits, setEdits] = useState({})
   const [acceptedChanges, setAcceptedChanges] = useState({})
@@ -77,9 +81,11 @@ export default function App() {
   const coverageStale = maxStep >= 3 && lastAnalyzedJdText !== null && jdText !== lastAnalyzedJdText
   const staleFrom = coverageStale ? 3 : null
 
-  function handleUploadDone({ resume_id, low_confidence }) {
+  function handleUploadDone({ resume_id, low_confidence, sections }) {
     setResumeId(resume_id)
     setLowConfidence(low_confidence)
+    setResumeSections(sections || [])
+    originalSectionsRef.current = JSON.parse(JSON.stringify(sections || []))
     // Clear all analysis state; keep jdText/settings so user doesn't have to re-paste
     setAnalysisId(null)
     setSkillMatches([])
@@ -106,6 +112,20 @@ export default function App() {
   }
 
   function handleReviewDone() {
+    // Build acceptedChanges by diffing current sections against originals
+    const changes = {}
+    const originals = originalSectionsRef.current
+    resumeSections.forEach((section, si) => {
+      section.roles.forEach((role, ri) => {
+        role.bullets.forEach((bullet, bi) => {
+          const origBullet = originals[si]?.roles[ri]?.bullets[bi]
+          if (origBullet && bullet.text !== origBullet.text) {
+            changes[bullet.bullet_id] = bullet.text
+          }
+        })
+      })
+    })
+    setAcceptedChanges(changes)
     setStep(5)
     setMaxStep(m => Math.max(m, 5))
   }
@@ -116,6 +136,8 @@ export default function App() {
     setResumeFile(null)
     setResumeId(null)
     setLowConfidence(false)
+    setResumeSections([])
+    originalSectionsRef.current = []
     setJdText('')
     setSettings(JD_DEFAULTS)
     setLastAnalyzedJdText(null)
@@ -128,7 +150,7 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className={step === 4 ? 'app app-wide' : 'app'}>
       <header>
         <h1>Resume ATS Matcher</h1>
         <p className="subtitle">Human-in-the-loop resume tailoring</p>
@@ -159,16 +181,15 @@ export default function App() {
             skillMatches={skillMatches}
             debugEvents={debugEvents}
             stale={coverageStale}
+            analysisId={analysisId}
             onNext={() => { setStep(4); setMaxStep(m => Math.max(m, 4)) }}
           />
         )}
         {step === 4 && (
-          <Step4Review
-            suggestions={rewriteSuggestions}
-            edits={edits}
-            onEditChange={setEdits}
-            acceptedChanges={acceptedChanges}
-            onAcceptChange={setAcceptedChanges}
+          <Step4Edit
+            resumeSections={resumeSections}
+            skillMatches={skillMatches}
+            onSectionsChange={setResumeSections}
             onDone={handleReviewDone}
           />
         )}

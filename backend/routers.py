@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ats_matcher.exporter import Exporter
-from db.writer import log_export
+from db.writer import log_export, log_feedback
 from ats_matcher.matching_engine import MatchingEngine
 from ats_matcher.phrase_ranker import rank_phrases_tfidf, select_phrases_mmr
 from ats_matcher.resume_parser import ResumeParser
@@ -15,6 +15,8 @@ from ats_matcher.rewrite_engine import RewriteEngine
 from backend.stores import AnalysisEntry, ResumeEntry, new_id
 
 router = APIRouter()
+
+BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -84,6 +86,13 @@ class ExportRequest(BaseModel):
     resume_id: str
     analysis_id: str
     accepted_changes: dict[str, str]
+
+
+class FeedbackRequest(BaseModel):
+    analysis_id: str
+    skill_phrase: str
+    bullet_text: Optional[str] = None
+    label: str  # 'covered' or 'not_covered'
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -159,8 +168,8 @@ async def analyze_jd(body: AnalyzeRequest, request: Request):
     bullet_ids = list(resume_data.bullet_index.keys())
     bullet_texts = [resume_data.bullet_index[bid].text for bid in bullet_ids]
 
-    skill_embeddings = embedding_engine.embed(skill_candidates)
-    doc_embedding = embedding_engine.embed([raw_text]).reshape(-1)
+    skill_embeddings = embedding_engine.embed(skill_candidates, prefix=BGE_QUERY_PREFIX)
+    doc_embedding = embedding_engine.embed([raw_text], prefix=BGE_QUERY_PREFIX).reshape(-1)
 
     if cfg.skill_ranker == "tfidf":
         selected_indices = rank_phrases_tfidf(
@@ -200,6 +209,7 @@ async def analyze_jd(body: AnalyzeRequest, request: Request):
     matcher = MatchingEngine(
         skill_strong_threshold=cfg.skill_strong_threshold,
         skill_weak_threshold=cfg.skill_weak_threshold,
+        cross_encoder=getattr(request.app.state, "cross_encoder", None),
     )
     skill_matches = matcher.match_skill_terms(
         phrases=skill_terms,
@@ -279,3 +289,11 @@ def export_resume(body: ExportRequest, request: Request):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": 'attachment; filename="tailored_resume.docx"'},
     )
+
+
+# ── Feedback ──────────────────────────────────────────────────────────────────
+
+@router.post("/feedback", status_code=204)
+def submit_feedback(body: FeedbackRequest):
+    log_feedback(body.analysis_id, body.skill_phrase, body.bullet_text, body.label)
+    return Response(status_code=204)

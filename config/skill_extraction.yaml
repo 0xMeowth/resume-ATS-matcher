@@ -1,45 +1,69 @@
 light_head:
   - area
-  - field
-  - domain
-  - space
-  - scope
   - aspect
-  - environment
-  - function
-  - capacity
-  - capability
-  - knowledge
-  - experience
-  - skills
-  - skill
   - background
+  - capability
+  - capacity
+  - domain
+  - environment
+  - experience
   - exposure
+  - field
+  - function
+  - knowledge
+  - scope
+  - skill
+  - skills
+  - space
 
 domain_stoplist:
   - ability
   - area
   - background
   - competency
-  - domain
   - discipline
+  - domain
+  - engineers
   - environment
   - experience
   - exposure
   - function
   - knowledge
   - minimum
-  - prior
   - preferred
+  - prior
+  - programming
   - relevant
   - scope
   - skill
   - skills
   - stakeholders
   - team
+  - teams
+  - improvements
+  - willingness
   - working
-  - years
   - year
+  - years
+  # Education terms (9B)
+  - bachelor
+  - bachelors
+  - "bachelor's"
+  - master
+  - masters
+  - "master's"
+  - phd
+  - diploma
+  - degree
+  - education
+  # Company identifiers (9B)
+  - pte
+  - ltd
+  # Qualification terms (9B)
+  - qualification
+  - qualifications
+  # Misc noise (9B)
+  - diverse
 
 single_token_allowlist:
   - ai
@@ -56,7 +80,7 @@ single_token_allowlist:
   - crm
   - docker
   - database
-  - defi 
+  - defi
   - etl
   - excel
   - fpa
@@ -80,8 +104,33 @@ single_token_allowlist:
   - spark
   - sql
   - tableau
+  - var
   - vba
   - web3
+  - redis
+  - devops
+  - kubernetes
+  - terraform
+  - ansible
+  - github
+  - openai
+  - langchain
+  - aiops
+  - chatops
+  - llms
+  - observability
+  - monitoring
+  - containerization
+  - orchestration
+
+vague_outcome_nouns:
+  - deployment
+  - reliability
+  - collaboration
+  - communication
+  - languages
+  - performance
+  - processes
 
 discourse_markers:
   - such as

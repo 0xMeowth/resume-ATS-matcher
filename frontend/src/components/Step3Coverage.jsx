@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { submitFeedback } from '../api'
 
 const TYPE_ORDER = { exact: 0, semantic_strong: 1, semantic_weak: 2, missing: 3 }
 const TYPE_LABEL = {
@@ -14,8 +15,18 @@ const TYPE_CLASS = {
   missing: 'tag-missing',
 }
 
-export default function Step3Coverage({ skillMatches, debugEvents, stale, onNext }) {
+export default function Step3Coverage({ skillMatches, debugEvents, stale, analysisId, onNext }) {
   const [showDebug, setShowDebug] = useState(false)
+  const [feedback, setFeedback] = useState({})
+
+  function handleFeedback(phrase, bulletText, label) {
+    const current = feedback[phrase]
+    const next = current === label ? null : label
+    setFeedback(f => ({ ...f, [phrase]: next }))
+    if (next && analysisId) {
+      submitFeedback(analysisId, phrase, bulletText, next)
+    }
+  }
 
   const sorted = [...skillMatches].sort((a, b) => {
     const od = (TYPE_ORDER[a.match_type] ?? 9) - (TYPE_ORDER[b.match_type] ?? 9)
@@ -50,17 +61,33 @@ export default function Step3Coverage({ skillMatches, debugEvents, stale, onNext
             <th>Match</th>
             <th>Similarity</th>
             <th>Evidence</th>
+            <th>Feedback</th>
           </tr>
         </thead>
         <tbody>
-          {sorted.map(m => (
-            <tr key={m.phrase}>
-              <td>{m.phrase}</td>
-              <td><span className={`tag ${TYPE_CLASS[m.match_type]}`}>{TYPE_LABEL[m.match_type]}</span></td>
-              <td>{m.similarity.toFixed(3)}</td>
-              <td className="evidence">{m.evidence_text || '—'}</td>
-            </tr>
-          ))}
+          {sorted.map(m => {
+            const fb = feedback[m.phrase]
+            return (
+              <tr key={m.phrase}>
+                <td>{m.phrase}</td>
+                <td><span className={`tag ${TYPE_CLASS[m.match_type]}`}>{TYPE_LABEL[m.match_type]}</span></td>
+                <td>{m.similarity.toFixed(3)}</td>
+                <td className="evidence">{m.evidence_text || '—'}</td>
+                <td className="feedback-cell">
+                  <button
+                    className={`feedback-btn${fb === 'covered' ? ' active' : ''}`}
+                    title="Covered"
+                    onClick={() => handleFeedback(m.phrase, m.evidence_text, 'covered')}
+                  >+</button>
+                  <button
+                    className={`feedback-btn${fb === 'not_covered' ? ' active' : ''}`}
+                    title="Not covered"
+                    onClick={() => handleFeedback(m.phrase, m.evidence_text, 'not_covered')}
+                  >-</button>
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
 

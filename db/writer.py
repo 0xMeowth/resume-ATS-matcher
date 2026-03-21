@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import numpy as np
 
@@ -11,6 +12,23 @@ from db.connection import get_connection
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def log_feedback(
+    analysis_id: str,
+    skill_phrase: str,
+    bullet_text: str | None,
+    label: str,
+) -> None:
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO skill_feedback (id, analysis_id, skill_phrase, bullet_text, label, created_at) VALUES (?,?,?,?,?,?)",
+            (str(uuid4()), analysis_id, skill_phrase, bullet_text, label, _now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def log_export(

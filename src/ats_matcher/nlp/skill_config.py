@@ -13,6 +13,7 @@ class SkillExtractionConfig:
     domain_stoplist: set[str]
     single_token_allowlist: set[str]
     discourse_markers: list[str]
+    vague_outcome_nouns: set[str]
 
 
 def default_config_path() -> Path:
@@ -40,6 +41,7 @@ def load_skill_extraction_config(
             payload.get("single_token_allowlist", [])
         ),
         discourse_markers=_as_normalized_list(payload.get("discourse_markers", [])),
+        vague_outcome_nouns=_as_normalized_set(payload.get("vague_outcome_nouns", [])),
     )
 
 

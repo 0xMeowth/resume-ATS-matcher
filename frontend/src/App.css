@@ -12,7 +12,9 @@ body {
   max-width: 860px;
   margin: 0 auto;
   padding: 24px 16px 64px;
+  transition: max-width 0.2s ease;
 }
+.app-wide { max-width: 1200px; }
 
 header { margin-bottom: 24px; }
 header h1 { font-size: 1.6rem; }
@@ -177,6 +179,22 @@ button:hover:not(:disabled) { background: #1565c0; }
 .evidence { color: #666; max-width: 320px; }
 .row-dropped { color: #999; }
 
+/* Feedback buttons */
+.feedback-cell { white-space: nowrap; }
+.feedback-btn {
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 7px;
+  margin-right: 4px;
+  color: #999;
+  transition: background 0.15s, color 0.15s;
+}
+.feedback-btn:hover { background: #f0f0f0; color: #333; }
+.feedback-btn.active { background: #1976d2; border-color: #1976d2; color: #fff; }
+
 /* Debug section */
 .debug-section { margin-top: 16px; }
 
@@ -201,3 +219,155 @@ button:hover:not(:disabled) { background: #1565c0; }
 .muted { color: #888; font-size: 13px; }
 
 hr { border: none; border-top: 1px solid #eee; margin: 20px 0; }
+
+/* ── Step 4: Edit Resume (two-column layout) ── */
+
+.edit-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+.edit-cv { flex: 2; min-width: 0; }
+.keyword-panel-wrapper {
+  flex: 0 0 300px;
+  position: sticky;
+  top: 20px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+/* Editable resume sections */
+.edit-section { margin-bottom: 20px; }
+.edit-section-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #555;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+}
+.edit-role { margin-bottom: 12px; }
+.edit-role-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 6px;
+}
+.bullet-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  overflow: hidden;
+  margin-bottom: 4px;
+  transition: border-color 0.15s;
+}
+.bullet-textarea:focus {
+  outline: none;
+  border-color: #1976d2;
+}
+.bullet-semantic {
+  border-left: 3px solid #f9a825;
+}
+
+/* Keyword panel */
+.keyword-panel {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.kp-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 8px;
+}
+.kp-score {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #222;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.kp-progress-track {
+  height: 8px;
+  background: #eee;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.kp-progress-fill {
+  height: 100%;
+  background: #4caf50;
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+.kp-count {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 16px;
+}
+
+/* Keyword list — multi-column grid */
+.kp-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 4px;
+}
+.kp-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: default;
+  position: relative;
+}
+.kp-icon {
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.kp-phrase {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kp-ignore-btn {
+  background: none;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.kp-item:hover .kp-ignore-btn { opacity: 1; }
+.kp-ignore-btn:hover { color: #666; background: none; }
+
+/* Keyword states */
+.kp-matched { background: #e8f5e9; }
+.kp-matched .kp-icon { color: #2e7d32; }
+.kp-matched .kp-phrase { color: #2e7d32; }
+.kp-semantic { background: #fff8e1; }
+.kp-semantic .kp-icon { color: #f57f17; }
+.kp-semantic .kp-phrase { color: #f57f17; }
+.kp-unmatched { background: #fce4ec; }
+.kp-unmatched .kp-icon { color: #c62828; }
+.kp-unmatched .kp-phrase { color: #c62828; }
+.kp-ignored { background: #f5f5f5; }
+.kp-ignored .kp-icon { color: #aaa; }
+.kp-ignored .kp-phrase { color: #aaa; text-decoration: line-through; }

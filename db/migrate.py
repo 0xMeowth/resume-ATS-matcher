@@ -47,6 +47,17 @@ CREATE INDEX IF NOT EXISTS idx_cv_pairs_job_id      ON cv_pairs(job_id);
 CREATE INDEX IF NOT EXISTS idx_cv_pairs_resume_id   ON cv_pairs(baseline_resume_id);
 CREATE INDEX IF NOT EXISTS idx_cv_pairs_created_at  ON cv_pairs(created_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_created_at      ON jobs(created_at);
+
+CREATE TABLE IF NOT EXISTS skill_feedback (
+    id           TEXT PRIMARY KEY,
+    analysis_id  TEXT,
+    skill_phrase TEXT NOT NULL,
+    bullet_text  TEXT,
+    label        TEXT NOT NULL,   -- 'covered' or 'not_covered'
+    created_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_skill_feedback_label ON skill_feedback (label);
 """
 
 # Separate schema for the vec0 virtual table — requires sqlite-vec to be loaded.

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -15,9 +15,13 @@ class MatchingEngine:
         self,
         skill_strong_threshold: float = 0.7,
         skill_weak_threshold: float = 0.55,
+        cross_encoder: Any = None,
+        cross_encoder_threshold: float = 0.0,
     ) -> None:
         self.skill_strong_threshold = skill_strong_threshold
         self.skill_weak_threshold = skill_weak_threshold
+        self.cross_encoder = cross_encoder
+        self.cross_encoder_threshold = cross_encoder_threshold
 
     def match_skill_terms(
         self,
@@ -81,9 +85,11 @@ class MatchingEngine:
             )
 
             best_score, best_bullet_id = self._best_semantic_match(
+                phrase,
                 phrase_vec,
                 bullet_embeddings,
                 bullet_ids,
+                bullet_texts,
                 candidate_indices,
             )
             evidence_text = bullet_texts[best_bullet_id] if best_bullet_id else None
@@ -128,24 +134,36 @@ class MatchingEngine:
 
     def _best_semantic_match(
         self,
+        phrase: str,
         query_vec: np.ndarray,
         bullet_embeddings: np.ndarray,
         bullet_ids: List[str],
+        bullet_texts: dict,
         candidate_indices: Optional[List[int]],
     ) -> Tuple[float, Optional[str]]:
         if candidate_indices is None:
             sims = np.dot(bullet_embeddings, query_vec.T).reshape(-1)
-            best_idx = int(np.argmax(sims))
-            return float(sims[best_idx]), bullet_ids[best_idx]
+            top_indices = list(range(len(bullet_ids)))
+        else:
+            if not candidate_indices:
+                return 0.0, None
+            subset_embeddings = bullet_embeddings[candidate_indices]
+            sims = np.dot(subset_embeddings, query_vec.T).reshape(-1)
+            top_indices = candidate_indices
 
-        if not candidate_indices:
-            return 0.0, None
+        if self.cross_encoder is not None:
+            pairs = [(phrase, bullet_texts[bullet_ids[i]]) for i in top_indices]
+            ce_scores = self.cross_encoder.predict(pairs)
+            best_local = int(np.argmax(ce_scores))
+            best_score = float(ce_scores[best_local])
+            # Normalize cross-encoder score via sigmoid so it's in (0, 1)
+            best_score = float(1 / (1 + np.exp(-best_score)))
+            best_idx = top_indices[best_local]
+        else:
+            best_local = int(np.argmax(sims))
+            best_score = float(sims[best_local])
+            best_idx = top_indices[best_local]
 
-        subset_embeddings = bullet_embeddings[candidate_indices]
-        sims = np.dot(subset_embeddings, query_vec.T).reshape(-1)
-        best_local = int(np.argmax(sims))
-        best_score = float(sims[best_local])
-        best_idx = candidate_indices[best_local]
         return best_score, bullet_ids[best_idx]
 
     def _build_tfidf(
