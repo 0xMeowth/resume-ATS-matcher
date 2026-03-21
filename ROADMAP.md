@@ -32,11 +32,11 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 7a: Fix VaR-pattern abbreviation extraction | done | var in allowlist + XxX regex for VaR-pattern abbreviations |
 | 7b: Cap noun chunk length at 6 words | done | 6-word cap in _clean_noun_chunk_segment |
 | 7c: Restore light_head + domain_stoplist; add noise terms | done | Reverted merge; restored light_head + domain_stoplist; added willingness/engineers/programming to domain_stoplist only |
-| 8a: BGE model swap | done | none | BAAI/bge-small-en-v1.5; asymmetric BGE_QUERY_PREFIX for skill + doc embeddings; bullets unprefixed |
-| 8b: Feedback schema + API | done | none | skill_feedback table + label index; log_feedback() in writer.py; POST /api/feedback endpoint |
-| 8c: Feedback UI | skipped | none | Feedback collection deprioritised; UI commented out, backend intact (endpoint + DB table preserved) |
-| 8d: Cross-encoder reranker | done | none | cross-encoder/ms-marco-MiniLM-L-6-v2; opt-in via USE_CROSS_ENCODER=1; sigmoid-normalised scores passed to thresholds |
-| 8e: Fine-tune bi-encoder | blocked | none | Needs ~100 skill_feedback rows; builds triplets + MultipleNegativesRankingLoss; saves to .cache/ats_matcher/finetuned_model/ |
+| 8a: BGE model swap | done | BAAI/bge-small-en-v1.5; asymmetric BGE_QUERY_PREFIX for skill + doc embeddings; bullets unprefixed |
+| 8b: Feedback schema + API | done | skill_feedback table + label index; log_feedback() in writer.py; POST /api/feedback endpoint |
+| 8c: Feedback UI | skipped | Removed from UI: fine-tuning needs 500+ clean examples to avoid overfitting; feedback signal is noisy (users click for UX reasons, not match accuracy); semantic matching may be cut from production entirely. Backend intact (endpoint + DB table) for future use. |
+| 8d: Cross-encoder reranker | done | cross-encoder/ms-marco-MiniLM-L-6-v2; opt-in via USE_CROSS_ENCODER=1; sigmoid-normalised scores passed to thresholds |
+| 8e: Fine-tune bi-encoder | blocked | Needs ~100 skill_feedback rows; builds triplets + MultipleNegativesRankingLoss; saves to .cache/ats_matcher/finetuned_model/ |
 | 9a: Text preprocessing (HTML, URLs, emails, slash-compounds) | done | `_preprocess_text()` strips HTML/URLs/emails; slash-compound tokenizer rules; 4 new tests |
 | 9b: Exclusion list additions (education, company IDs, qualifications) | done | 16 terms added to domain_stoplist; 2 new tests |
 | 9c: Extraction logic fixes (substring suppression, lemmatization, company names) | done | C1: independent phrase survival in `_suppress_substrings`; C2: `_lemma_dedup`; C3: `_extract_company_stopwords`; 3 new tests |
@@ -60,6 +60,7 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 11e: Port fixes to DOCX path | done | Continuation merging via `_is_continuation()`; keyword heading detection |
 | 11f: Regression tests | done | 15 new tests with real PDF fixtures; 48 total passing |
 | 11g: Update ROADMAP + cleanup | done | Phase 11 stages added; backlog removed |
+| 12a: Keyword panel substring dedup (frontend) | done | Backend `_suppress_substrings` intentionally keeps both "machine learning" and "machine learning models" when the shorter phrase appears independently in the JD (C1 independence clause, `jd_parser.py:588`). This double-counts in the panel. Fix: client-side whole-word substring filter in `KeywordPanel.jsx` — longer phrase kept, shorter hidden. Backend scores unchanged. Future "repeated phrase ranking" feature should revisit this: shorter phrase occurrence count may be a useful signal. See `docs/architecture.md` § Skill extraction design decisions. |
 
 ---
 

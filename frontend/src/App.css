@@ -11,10 +11,22 @@ body {
 .app {
   max-width: 860px;
   margin: 0 auto;
-  padding: 24px 16px 64px;
+  padding: 0 16px 64px;
   transition: max-width 0.2s ease;
 }
 .app-wide { max-width: 1200px; }
+
+/* Frozen page header (title + wizard steps) */
+.page-header-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #f5f5f5;
+  padding-top: 24px;
+  padding-bottom: 4px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
 
 header { margin-bottom: 24px; }
 header h1 { font-size: 1.6rem; }
@@ -231,8 +243,13 @@ hr { border: none; border-top: 1px solid #eee; margin: 20px 0; }
 .keyword-panel-wrapper {
   flex: 0 0 300px;
   position: sticky;
-  top: 20px;
-  max-height: calc(100vh - 40px);
+  top: calc(var(--header-h, 0px) + 20px);
+  max-height: calc(100vh - var(--header-h, 0px) - 40px);
+}
+
+/* Keyword panel scrolls internally */
+.keyword-panel {
+  max-height: inherit;
   overflow-y: auto;
 }
 
@@ -277,9 +294,41 @@ hr { border: none; border-top: 1px solid #eee; margin: 20px 0; }
 .keyword-panel {
   background: #fff;
   border-radius: 8px;
-  padding: 20px;
+  padding: 0;
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
+
+/* Frozen panel header — sticks to top of panel scroll */
+.kp-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #fff;
+  border-radius: 8px 8px 0 0;
+  padding: 20px 20px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* Scroll fade indicators (top and bottom of keyword list) */
+.kp-scroll-fade {
+  position: sticky;
+  height: 48px;
+  pointer-events: none;
+  z-index: 5;
+}
+.kp-scroll-fade-bottom {
+  bottom: 0;
+  margin-top: -48px;
+  background: linear-gradient(to bottom, transparent, #fff);
+  border-radius: 0 0 8px 8px;
+}
+.kp-scroll-fade-top {
+  top: 0;
+  margin-bottom: -48px;
+  background: linear-gradient(to top, transparent, #fff);
+  border-radius: 8px 8px 0 0;
+}
+
 .kp-title {
   font-size: 0.9rem;
   font-weight: 600;
@@ -315,7 +364,7 @@ hr { border: none; border-top: 1px solid #eee; margin: 20px 0; }
 /* Keyword list — multi-column grid */
 .kp-list {
   list-style: none;
-  padding: 0;
+  padding: 8px 20px 20px;
   margin: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));

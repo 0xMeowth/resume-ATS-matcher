@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import Step1Upload from './components/Step1Upload'
 import Step2JD from './components/Step2JD'
 import Step3Coverage from './components/Step3Coverage'
@@ -72,6 +72,18 @@ export default function App() {
   // Resume sections (structured data from upload)
   const [resumeSections, setResumeSections] = useState([])
   const originalSectionsRef = useRef([])
+
+  // Measure sticky page header height → CSS custom property for panel offset
+  const pageHeaderRef = useRef(null)
+  useEffect(() => {
+    const el = pageHeaderRef.current
+    if (!el) return
+    const observer = new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--header-h', el.offsetHeight + 'px')
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   // Step 4 state (lifted so edits survive navigation)
   const [edits, setEdits] = useState({})
@@ -151,17 +163,19 @@ export default function App() {
 
   return (
     <div className={step === 4 ? 'app app-wide' : 'app'}>
-      <header>
-        <h1>Resume ATS Matcher</h1>
-        <p className="subtitle">Human-in-the-loop resume tailoring</p>
-      </header>
+      <div className="page-header-sticky" ref={pageHeaderRef}>
+        <header>
+          <h1>Resume ATS Matcher</h1>
+          <p className="subtitle">Human-in-the-loop resume tailoring</p>
+        </header>
 
-      <StepIndicator
-        current={step}
-        maxStep={maxStep}
-        staleFrom={staleFrom}
-        onStepClick={setStep}
-      />
+        <StepIndicator
+          current={step}
+          maxStep={maxStep}
+          staleFrom={staleFrom}
+          onStepClick={setStep}
+        />
+      </div>
 
       <main>
         {step === 1 && <Step1Upload file={resumeFile} onFileChange={setResumeFile} onDone={handleUploadDone} />}

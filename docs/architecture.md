@@ -223,6 +223,30 @@ The old Step 4 (AI suggestions) is preserved as `Step4ReviewLegacy.jsx` but not 
 
 5. **Step 3 (Coverage) is kept as-is.** It serves as a detailed debug/analysis view with similarity scores and +/- feedback. The new Step 4 is the clean, user-facing editing experience. Step 3 may be hidden in production later.
 
+---
+
+## Skill extraction design decisions
+
+### Substring suppression and the C1 independence clause
+
+The JD parser runs `_suppress_substrings()` to avoid showing redundant skill terms — e.g. "machine learning" should not appear alongside "machine learning models" if the former is just a fragment of the latter.
+
+However, `_suppress_substrings` contains a deliberate exception called the **C1 independence clause** (`jd_parser.py:588`, `_phrase_appears_independently`):
+
+> If the shorter phrase appears in the JD text **outside** of the longer phrase (i.e. in a different sentence/context), both are kept.
+
+**Rationale:** A JD might genuinely require both "machine learning" (general familiarity) and "machine learning models" (hands-on building). Suppressing the shorter phrase would silently drop a distinct requirement.
+
+**Side effect:** When both phrases appear in the same JD in genuinely independent contexts, the keyword panel shows both. Typing "machine learning models" into a bullet makes both turn green, inflating the coverage score.
+
+**Current mitigation (frontend, `KeywordPanel.jsx`):** A client-side whole-word substring filter removes the shorter keyword from the panel display when a longer keyword containing it also exists. The longer phrase is shown; the shorter is hidden. This does **not** affect the Step 3 backend score — both phrases are still matched server-side and the coverage report still counts them separately.
+
+**Future consideration:** A planned "repeated phrase ranking" feature would prioritise skill terms that appear more frequently in the JD. If implemented, the frontend dedup should be revisited — the suppressed shorter phrase's occurrence count may be a meaningful signal worth preserving in the UI.
+
+**Files involved:**
+- `src/ats_matcher/jd_parser.py` — `_suppress_substrings()` (line 544), `_phrase_appears_independently()` (line 588)
+- `frontend/src/components/KeywordPanel.jsx` — client-side dedup filter
+
 ### New components
 
 | File | Purpose |

@@ -16,11 +16,14 @@ light_head:
   - skills
   - space
 
+
 domain_stoplist:
   - ability
   - area
   - background
   - competency
+  - curious
+  - curiosity
   - discipline
   - domain
   - engineers
@@ -64,6 +67,9 @@ domain_stoplist:
   - qualifications
   # Misc noise (9B)
   - diverse
+  - industry
+  - player
+  - work
 
 single_token_allowlist:
   - ai
