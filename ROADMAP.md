@@ -43,6 +43,8 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 9d: MCF dictionary integration (accumulate, load as MCF_SKILL, seed) | done | 5,212 skills from 5,028 JDs (38 keywords); `fetch_jds.py` batch mode + pagination; MCF_SKILL entity ruler |
 | 9e: Analysis report + drop JobBERT documentation | done | `docs/test_extraction_comparison.md`; `scripts/extract_legitimate_jobbert.py`; Model Inventory updated |
 | 9f: Documentation + custom skill source | done | `config/custom_skills.yaml` (22 terms); CUSTOM_SKILL entity ruler; three-source architecture complete |
+| 9g: Whitelist expansion + Lightcast/O*NET integration | done | 50-JD train/test analysis; +65 terms to custom_skills.yaml + skill_extraction.yaml; Lightcast ST1 (29K) + O*NET (6.6K) entity rulers added; `overwrite_ents=True` on custom ruler (fixes sub-span blocking); hyphen normalisation in `_preprocess_text` (`problem-solving` → `problem solving`); whitelist coverage 26% → 38% |
+| 9h: Whitelist-only extraction mode | done | `whitelist_only` param in `extract_skill_components()`; `AnalyzeSettings.whitelist_only` bool; checkbox toggle in Step 2 settings panel |
 | 10a: Wire resume sections into App state | done | `resumeSections` + `originalSectionsRef` in App.jsx; deep-clone for diff |
 | 10b: KeywordPanel component | done | Progress bar, keyword list, ignore toggle, 4 states (matched/semantic/unmatched/ignored) |
 | 10c: Step4Edit component | done | Two-column flex layout; auto-resize textareas; amber border on semantic bullets |
@@ -76,7 +78,13 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 14d: Categorical keyword filters | done | Conjunction splitting, trailing light-head cascade, vague_tail_nouns (expanded from vague_outcome_nouns), soft_skill_markers, academic_field_nouns, light_modifier stripping, adjective-only fragment rejection; eliminates false positives systematically without growing exclude_list |
 | 14e: Multi-source JD fetch (Greenhouse + Lever) | done | Extended fetch_jds.py with --source greenhouse/lever --companies flags; Binance (Lever), Stripe/Coinbase/Airbnb/Datadog (Greenhouse) confirmed working; 50 JDs fetched as fixtures |
 | 14f: Extraction tuning pass (EEO strip + config) | done | EEO/legal boilerplate regex strip in preprocessing; expanded exclude_list, vague_tail_nouns, light_modifier, light_head from 50-JD analysis; 23% noise reduction (4646→3583 rows) |
-| 15a: LLM-assisted rewrite in Step 4 | pending | Per-role rewrite via Ollama; click-to-select keywords in panel, inline preview card. UX preference order: (1) per-role user-dispatched, (2) whole-CV auto-distribute, (3) LLM suggests placement then user confirms. Start with option 1. |
+| 15a: Injectable/non-injectable split | pending | For each missing keyword, use BGE to find most similar line in the role's free-text; if similarity > threshold → injectable target; else → non-injectable (flag for new bullet); backend only, no LLM |
+| 15b: Ollama single-line rewrite | pending | Call Ollama with target line + 1-2 surrounding lines + keyword to inject; prompt rules: keep metrics verbatim, strong action verb, 15-30 words, weave keyword naturally; return 3 alternatives |
+| 15c: Validation gates | pending | Post-LLM local guards before showing rewrites to user: fact_preservation (numbers/$ must survive), length_sanity (≤40 words, ≤1.8x original), ai_phrases cleanup (107 buzzword replacements, JD-protected), hallucination (revert if >3 new capitalised domain terms) |
+| 15d: Verb dedup post-pass | pending | After all rewrites in a section, detect repeated first-word action verbs; replace duplicates using synonym dict; pure local |
+| 15e: Pop-up card UX | pending | Trigger from keyword panel (click missing keyword) or textarea (select text); card shows 3 alternatives with original struck through; accept replaces line in textarea and triggers keyword panel live update |
+| 15f: Holistic CV scoring | pending | Multi-dimension score (no LLM): quantification rate (regex), action verb strength (two word lists), conciseness (bullet word count 15-22 ideal), tense consistency (spaCy POS), section completeness, keyword alignment; sub-scores per dimension surfaced in UI; optional single LLM call for narrative deep-review |
+| 15g: JD red-flag scanner | KIV | Surface discriminatory language (TAFEP), scam signals, exploitative conditions as warning banner on Step 2; write from scratch (do not port job-hunter-sg implementation) |
 | 16a: PDF export — weasyprint backend | done | pdf_exporter.py (HTML template + weasyprint); POST /api/export/pdf endpoint accepts resumeSections JSON |
 | 16b: PDF export — preview UX | done | Step5Export rewritten: inline PDF preview (iframe), Download + Regenerate buttons |
 | 16c: Remove DOCX export path | done | Old DOCX endpoint + ExportRequest + exportResume removed; exporter.py kept for Streamlit legacy path only |
@@ -390,4 +398,81 @@ Three-source architecture:
 **RAG cold-start:** Similarity search is useless without several high-quality (JD, edited_CV) pairs. Run Stage 4a before Stage 4b. Filter by domain/role — cosine similarity alone can match unrelated seniority levels.
 
 **BYO model abstraction:** Ollama first. Only abstract the model interface once 2+ backends are actually working.
+
+---
+
+## Phase 15 — Rewrite + Scoring
+
+### Stage 15a: Injectable/non-injectable split
+- Split each role's free-text textarea into lines on the backend (split by `\n`, strip blanks)
+- For each missing keyword, embed the keyword and all lines using BGE; find highest cosine similarity line per role
+- If similarity > threshold (e.g. 0.4) → mark as injectable with that line as target
+- If no line clears threshold → mark as non-injectable (a new bullet is needed rather than editing an existing one)
+- Return `{keyword, injectable: bool, target_line_idx, similarity}` per keyword
+- **Verification:** unit test with a role containing 4 lines; assert correct line is selected as target for a given keyword
+
+---
+
+### Stage 15b: Ollama single-line rewrite
+- Input: target line + up to 2 surrounding lines as context + keyword to inject + top 5 JD skills
+- Prompt rules: keep all numbers/metrics verbatim; start with strong action verb; 15-30 words; weave keyword naturally; do not repeat what sibling lines already say
+- Return JSON `{"alternatives": ["...", "...", "..."]}` — exactly 3
+- **Verification:** Ollama running locally; POST to a test endpoint; assert response is valid JSON with 3 non-empty strings
+
+---
+
+### Stage 15c: Validation gates
+Four local checks run on each alternative before it is shown to the user:
+- `fact_preservation`: extract all numbers/$/% from original line; assert all present verbatim in rewrite → revert to original if any missing
+- `length_sanity`: reject if >40 words or >1.8× original word count → revert
+- `ai_phrases`: replace 107 buzzwords (`synergized→collaborated`, `cutting-edge→modern`, `passionate about→interested in`, etc.); JD-protected — skip replacement if the word appears in the JD
+- `hallucination`: revert if >3 new capitalised tokens appear that were not in original line or JD text
+- **Verification:** unit tests with crafted LLM outputs that trigger each gate; assert correct revert/fix behaviour
+
+---
+
+### Stage 15d: Verb dedup post-pass
+- After all rewrites are accepted for a section, collect first words of all lines in that section
+- Detect repeated action verbs (e.g. three bullets starting with "Led")
+- Replace duplicates using a synonym dict (`led→directed`, `built→developed`, `managed→oversaw`, etc.)
+- Pure local, no LLM
+- **Verification:** unit test a section with 3 "Led" bullets; assert no duplicate first verbs after pass
+
+---
+
+### Stage 15e: Pop-up card UX
+- Trigger A: click a missing keyword in the keyword panel → backend resolves injectable target for that keyword → card appears anchored to the panel item; target line is highlighted in the textarea
+- Trigger B: select text in a textarea → card offers rewrite with a keyword chosen from a dropdown of missing keywords
+- Card layout: original line (struck through) → 3 alternative buttons → Accept / Try again / Dismiss
+- On Accept: replaces that line in the textarea; keyword panel recomputes live match
+- On Try again: fires a new Ollama call with `temperature += 0.1`
+- Dismiss / Escape closes without changes
+- **Verification:** full manual flow — click keyword → card renders → accept alternative → keyword moves to matched in panel
+
+---
+
+### Stage 15f: Holistic CV scoring
+
+**Score dimensions (all local, no LLM):**
+
+| Dimension | Weight | Measurement |
+|---|---|---|
+| Quantification | 25% | % of experience bullets containing digit / % / $ / multiplier (regex) |
+| Action verb strength | 20% | % starting with strong verb; penalise weak openers (`responsible for`, `helped`, `worked on`) |
+| Conciseness | 20% | Bullet word count; ideal 15-22 words; score degrades outside 10-30 range |
+| Consistency | 15% | Tense consistency via spaCy POS (past roles = past tense); repeated action verbs penalised |
+| Completeness | 10% | Key sections present (Summary, Experience, Education, Skills); contact info (email, LinkedIn, phone) |
+| Keyword alignment | 10% | % of JD keywords covered (existing metric) |
+
+- Each dimension scored 0-100; weighted average = overall score
+- Sub-scores surfaced in UI so user knows *why* they scored low
+- Optional single LLM call for "deep review" (user-triggered): structured yes/no on 5 traits (coherent narrative, no contradictions, seniority signal, no red flags, filler density) — returns JSON flags, not a score
+
+**Verification:** Score panel renders with sub-scores; upload a metrics-heavy CV → quantification score high; upload a filler-heavy CV → action verb score low
+
+---
+
+### Stage 15c: JD red-flag scanner *(KIV)*
+
+Surface discriminatory language (age/gender/race/marital status — Singapore TAFEP guidelines), scam signals, and exploitative conditions as a warning banner in Step 2 before analysis. Write from scratch — do not port job-hunter-sg implementation wholesale.
 

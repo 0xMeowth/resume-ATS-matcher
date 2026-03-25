@@ -30,9 +30,15 @@ A human-in-the-loop resume tailoring tool. The user uploads a resume, provides a
   - **ESCO** (~6,000 skills) — the European Skills/Competences taxonomy, an official EU standard
   - **MCF** (~780 skills) — scraped from Singapore's MyCareersFuture job portal, where the government pre-tags each listing with skills
   - **Custom** (~22 skills) — manually curated terms we found through testing (e.g. "model registry", "agent orchestration")
-- Candidates go through **filtering** — we remove generic words ("experience", "team", "bachelor's degree"), company names, and anything too short or vague. This filtering has two layers that work together:
+- **EEO/legal boilerplate stripping** — a regex detects common Equal Opportunity / legal disclaimer sections and truncates the text before extraction. This removes "veteran status", "sexual orientation", etc. in one pass.
+- Candidates go through **filtering** — we remove generic words ("experience", "team", "bachelor's degree"), company names, and anything too short or vague. This uses categorical heuristics rather than enumerating every bad phrase:
   - **`exclude_list`** — exact string match. If the entire extracted phrase (or every individual word in it) is in the list, it's dropped. Works well for clear-cut noise like "shortlisted", "hybrid work", "phd".
-  - **`light_head` stripping + `vague_outcome_nouns`** — handles cases where spaCy's grammar-based chunking produces noise phrases. For example, `full-time` is tokenised by spaCy as `full` + `-` + `time`, so "full-time work arrangements" becomes the noun chunk `"full time work arrangements"` with head noun `"arrangements"`. Since `"arrangements"` is in `light_head`, we strip it — leaving `"full time work"`. Then, since the last word `"work"` is in `vague_outcome_nouns`, the whole phrase is dropped. This two-step approach is more robust than trying to enumerate every possible "full time work X" variant in `exclude_list`.
+  - **`light_head` stripping + `vague_tail_nouns`** — handles cases where spaCy's grammar-based chunking produces noise phrases. For example, `full-time` is tokenised by spaCy as `full` + `-` + `time`, so "full-time work arrangements" becomes the noun chunk `"full time work arrangements"` with head noun `"arrangements"`. Since `"arrangements"` is in `light_head`, we strip it — leaving `"full time work"`. Then, since the last word `"work"` is in `vague_tail_nouns`, the whole phrase is dropped. Trailing light-head tokens are stripped in a cascade (e.g. "Life Sciences domain experience" → strips "experience" then "domain" → "Life Sciences").
+  - **`light_modifier`** — strips vague leading adjectives like "new", "strong", "proven", "various". "new tools" → "tools" (then caught by other filters). "strong Python skills" → "Python" (kept).
+  - **`soft_skill_markers`** — rejects phrases containing soft-skill patterns like "driven", "team player", "fast paced". Catches entire categories without listing every variant.
+  - **`academic_field_nouns`** — rejects phrases ending in "sciences", "studies", "mathematics" etc. unless they're matched by ESCO/MCF/Custom dictionaries.
+  - **Conjunction splitting** — noun chunks containing "and"/"or" are split before processing, preventing runaway phrases like "proprietary and open source data analytics platforms".
+  - **Adjective-only rejection** — multi-token fragments with no NOUN/PROPN token (e.g. "Transactional operational" left after conjunction split) are discarded.
 - Finally, **deduplication** collapses near-duplicates. "strategy frameworks" and "strategy framework" become one entry. If "data governance" only appears inside "data governance frameworks", we keep the longer one. But if "data governance" also appears on its own somewhere in the JD, we keep both.
 
 ### Step 2: Matching skills against your resume
@@ -64,7 +70,7 @@ User (browser)
     ▼
 [JDParser]  ←  raw JD text or URL
     │  spaCy NER + ESCO entity ruler → noun chunk candidates
-    │  Filtered by skill_extraction.yaml (stopwords, allowlists, light_head stripping)
+    │  EEO stripping → filtered by skill_extraction.yaml (categorical heuristics)
     │  Output: combined_skills (deduplicated candidate list)
     │
 [EmbeddingEngine]  (BAAI/bge-small-en-v1.5, lazy-loaded)
