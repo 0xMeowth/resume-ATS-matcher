@@ -1,0 +1,30 @@
+# Active provider: ollama | huggingface
+# Override with REWRITE_PROVIDER env var
+provider: huggingface
+
+# Thinking mode: when true, keeps <think> blocks in output (for debugging).
+# When false, strips them. Override with REWRITE_THINKING env var.
+thinking: false
+
+system_prompt: >
+  You are a professional resume editor.
+  Rewrite the given resume bullet to incorporate the target keyword naturally and concisely.
+  Keep the same tense, voice, and approximate length.
+  Return only the rewritten bullet — no explanation, no preamble.
+
+# For thinking models: appended to system_prompt when thinking is disabled
+no_think_suffix: "Do not include any thinking, reasoning, or explanation — output only the final rewritten bullet."
+
+providers:
+  ollama:
+    base_url: http://localhost:11434      # env override: OLLAMA_BASE_URL
+    model: llama3.2                       # env override: OLLAMA_MODEL
+    timeout: 30                           # env override: OLLAMA_TIMEOUT
+    max_concurrent: 0
+
+  huggingface:
+    base_url: https://router.huggingface.co/v1  # env override: HF_BASE_URL
+    model: Qwen/Qwen2.5-7B-Instruct             # env override: HF_MODEL
+    api_key_env: HF_TOKEN
+    timeout: 60                                  # env override: HF_TIMEOUT
+    max_concurrent: 0

@@ -146,7 +146,7 @@ def test_john_smith_bullet_continuation():
     parser = ResumeParser()
     result = parser.parse(pdf_path.read_bytes())
     # "fundraiser for 200 attendees" should be part of a bullet, not a role title
-    role_titles = [r.title for s in result.sections for r in s.roles]
+    role_titles = [r.title for s in result.sections for r in s.roles if r.title]
     orphan_fragments = [t for t in role_titles if "fundraiser" in t.lower()]
     assert len(orphan_fragments) == 0, (
         f"Continuation line 'fundraiser...' orphaned as role title: {orphan_fragments}"

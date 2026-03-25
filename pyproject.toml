@@ -23,6 +23,7 @@ dependencies = [
     "python-multipart>=0.0.22",
     "sqlite-vec>=0.1.6",
     "httpx>=0.28.1",
+    "weasyprint>=68.1",
 ]
 
 [tool.pytest.ini_options]

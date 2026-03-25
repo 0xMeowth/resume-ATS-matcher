@@ -1,6 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react'
 
-export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgnore, resumeText, flashedPhrases }) {
+export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgnore, resumeText, flashedPhrases, lostPhrases }) {
   const scrollRef = useRef(null)
   const [showTopFade, setShowTopFade] = useState(false)
   const [showBottomFade, setShowBottomFade] = useState(true)
@@ -72,6 +72,7 @@ export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgno
           else if (k.semanticHint) cls += ' kp-semantic'
           else cls += ' kp-unmatched'
           if (flashedPhrases && flashedPhrases.has(k.phrase)) cls += ' kp-flash'
+          if (lostPhrases && lostPhrases.has(k.phrase)) cls += ' kp-flash-pink'
 
           return (
             <li

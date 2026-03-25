@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from io import BytesIO
 from statistics import median
@@ -15,6 +16,44 @@ _PDF_MAGIC = b"%PDF"
 
 # Bullet characters recognised across PDFs
 _BULLET_CHARS = set("-•·▪▸►✓*∗◦‣–")
+
+# Contact info patterns
+_PHONE_RE = re.compile(
+    r"(?:\+\d[\d\s\-]{8,}|\(?\d{3}\)?[\s.\-·]?\d{3}[\s.\-·]?\d{4})"
+)
+_EMAIL_RE = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}")
+_URL_RE = re.compile(r"(?:https?://|www\.)\S+|linkedin\.com\S*|github\.com\S*", re.I)
+
+
+def _is_contact_line(text: str) -> bool:
+    """Return True if the line contains phone, email, or URL patterns."""
+    return bool(_PHONE_RE.search(text) or _EMAIL_RE.search(text) or _URL_RE.search(text))
+
+
+def _normalize_spaced_heading(text: str) -> str:
+    """Collapse spaced-letter headings: 'E X P E R I E N C E' → 'EXPERIENCE',
+    'S K I L L S & I N T E R E S T S' → 'SKILLS & INTERESTS'."""
+    parts = text.split()
+    if len(parts) < 3:
+        return text
+    single_count = sum(1 for p in parts if len(p) == 1)
+    if single_count / len(parts) < 0.7:
+        return text
+    # Collapse consecutive single-letter parts into words,
+    # keep multi-char parts (like '&') as separators
+    result = []
+    current_word = []
+    for p in parts:
+        if len(p) == 1 and p.isalpha():
+            current_word.append(p)
+        else:
+            if current_word:
+                result.append("".join(current_word))
+                current_word = []
+            result.append(p)
+    if current_word:
+        result.append("".join(current_word))
+    return " ".join(result)
 
 
 @dataclass
@@ -104,6 +143,21 @@ def _extract_lines_from_pdf(pdf_bytes: bytes) -> List[Line]:
                         top=top,
                     )
                 )
+
+    # Sort by visual position (page, then top-to-bottom) to fix PDFs
+    # where the content stream order differs from the visual layout.
+    all_lines.sort(key=lambda ln: (ln.page_idx, ln.top))
+
+    # Recompute y_gap after sorting
+    for i, ln in enumerate(all_lines):
+        if i == 0:
+            ln.y_gap = 0.0
+        else:
+            prev = all_lines[i - 1]
+            if ln.page_idx != prev.page_idx:
+                ln.y_gap = 0.0  # new page — no meaningful gap
+            else:
+                ln.y_gap = ln.top - prev.top
 
     return all_lines
 
@@ -267,7 +321,19 @@ class ResumeParser:
         "leadership experience",
         "selected",
         "athletics",
+        "skills & interests",
+        "skills and interests",
     }
+
+    def _text_contains_heading_keyword(self, text: str) -> bool:
+        """Check if text contains any heading keyword (word-level match)."""
+        text_clean = text.lower().strip().rstrip(":- ")
+        # Exact match first
+        if text_clean in self._HEADING_KEYWORDS:
+            return True
+        # Word-level: split on non-alpha and check if any keyword appears
+        words = set(re.split(r"[^a-z]+", text_clean))
+        return bool(words & self._HEADING_KEYWORDS)
 
     def _parse_pdf(self, pdf_bytes: bytes) -> ResumeData:
         lines = _extract_lines_from_pdf(pdf_bytes)
@@ -288,32 +354,88 @@ class ResumeParser:
         x0_values = [ln.x0 for ln in lines]
         indent_levels = _cluster_x0(x0_values)
 
-        # Classify each line
+        # ── Pre-heading pass: find first real heading and group header lines ──
+        first_heading_idx = None
+        for i, ln in enumerate(lines):
+            text = ln.text.strip()
+            if not text:
+                continue
+            normalized = _normalize_spaced_heading(text)
+            if self._text_contains_heading_keyword(normalized):
+                first_heading_idx = i
+                break
+            # Also check multi-signal heading, but only if it has a keyword
+            # (name lines are often large+bold and pass heading detection)
+            if self._pdf_is_heading_multi(ln, body_size, median_gap):
+                if self._text_contains_heading_keyword(normalized):
+                    first_heading_idx = i
+                    break
+
+        # Build header section from pre-heading lines
         sections: List[Section] = []
         bullet_index = {}
-        current_section: Optional[Section] = None
-        current_role: Optional[Role] = None
         bullet_counter = 0
+        start_idx = 0
+
+        if first_heading_idx is not None and first_heading_idx > 0:
+            pre_lines = lines[:first_heading_idx]
+            # Name = largest font line (or first line if tied)
+            name_line = max(pre_lines, key=lambda ln: ln.font_size)
+            name = name_line.text.strip()
+            # Contact lines = everything else
+            contact_bullets = []
+            for ln in pre_lines:
+                t = ln.text.strip()
+                if not t or t == name:
+                    continue
+                bid = stable_bullet_id(name, "", bullet_counter)
+                bullet_counter += 1
+                b = Bullet(
+                    bullet_id=bid,
+                    text=t,
+                    paragraph_index=-1,
+                    section_title=name,
+                    role_title="",
+                )
+                contact_bullets.append(b)
+                bullet_index[bid] = b
+            header_role = Role(title=None, bullets=contact_bullets)
+            header_section = Section(title=name, roles=[header_role] if contact_bullets else [])
+            sections.append(header_section)
+            start_idx = first_heading_idx
+
+        # Classify remaining lines
+        current_section: Optional[Section] = sections[0] if sections else None
+        current_role: Optional[Role] = None
         last_bullet: Optional[Bullet] = None
         last_bullet_x0: Optional[float] = None
+        inside_known_section = False  # prevents false section splits
+        heading_x0: Optional[float] = None  # x0 of last heading line
+        heading_top: Optional[float] = None  # top of last heading line
 
-        for idx, ln in enumerate(lines):
+        for idx, ln in enumerate(lines[start_idx:], start=start_idx):
             text = ln.text.strip()
             if not text:
                 continue
 
+            # Normalise spaced-letter headings for keyword matching
+            normalized = _normalize_spaced_heading(text)
+            is_spaced = normalized != text
+
             # ── Heading continuation ──
-            # If previous line was a heading with no roles yet and this line is
-            # short, at same x0, same style → merge into heading
-            # (handles "EDUCATION" + "AND AWARDS", "INTER-" + "COLLEGIATE" etc.)
+            # Merge short ALL-CAPS lines near the heading's x0/top into the
+            # heading title (handles "EDUCATION" + "AND AWARDS" across columns).
+            # Skip if the text is itself a heading keyword (it's a new section).
             if (
                 current_section is not None
-                and current_role is None
-                and len(current_section.roles) == 0
+                and heading_x0 is not None
+                and text.isupper()
                 and len(text) <= 30
-                and idx > 0
-                and abs(ln.x0 - lines[idx - 1].x0) < 5
+                and not any(c.isdigit() for c in text)
                 and not ln.has_bullet
+                and text.lower().strip().rstrip(":- ") not in self._HEADING_KEYWORDS
+                and abs(ln.x0 - heading_x0) < 5
+                and ln.top - heading_top < median_gap * 3
             ):
                 # Check if heading title ends with hyphen (word break)
                 if current_section.title.endswith("-"):
@@ -324,12 +446,25 @@ class ResumeParser:
 
             # ── Heading detection (multi-signal) ──
             if self._pdf_is_heading_multi(ln, body_size, median_gap):
-                current_section = Section(title=text, roles=[])
-                sections.append(current_section)
-                current_role = None
-                last_bullet = None
-                last_bullet_x0 = None
-                continue
+                is_keyword_heading = self._text_contains_heading_keyword(
+                    normalized
+                )
+                # Inside a known section (e.g. EXPERIENCE), only allow new sections
+                # for lines that match heading keywords. Bold+gap company names
+                # (e.g. "Shopee Dec 19 - Dec 21") fall through to role title.
+                if is_keyword_heading or not inside_known_section:
+                    # Use normalised title only for keyword headings
+                    title = normalized if (is_spaced and is_keyword_heading) else text
+                    current_section = Section(title=title, roles=[])
+                    sections.append(current_section)
+                    current_role = None
+                    last_bullet = None
+                    last_bullet_x0 = None
+                    inside_known_section = is_keyword_heading
+                    heading_x0 = ln.x0
+                    heading_top = ln.top
+                    continue
+                # else: fall through to role title detection below
 
             # ── Bullet detection ──
             if ln.has_bullet:
@@ -410,11 +545,11 @@ class ResumeParser:
         if ln.is_bold and len(text) <= 40:
             signals += 1
 
-        # Signal 3: Known heading keyword
-        text_lower = text.lower().strip()
-        # Strip trailing colons, dashes for matching
+        # Signal 3: Known heading keyword (normalise spaced letters first)
+        normalized = _normalize_spaced_heading(text)
+        text_lower = normalized.lower().strip()
         text_clean = text_lower.rstrip(":- ")
-        if text_clean in self._HEADING_KEYWORDS:
+        if self._text_contains_heading_keyword(text_clean):
             signals += 1
 
         # Signal 4: ALL-CAPS

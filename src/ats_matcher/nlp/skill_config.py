@@ -13,7 +13,10 @@ class SkillExtractionConfig:
     exclude_list: set[str]
     single_token_allowlist: set[str]
     discourse_markers: list[str]
-    vague_outcome_nouns: set[str]
+    vague_tail_nouns: set[str]
+    soft_skill_markers: list[str]
+    academic_field_nouns: set[str]
+    light_modifier: set[str]
 
 
 def default_config_path() -> Path:
@@ -41,7 +44,12 @@ def load_skill_extraction_config(
             payload.get("single_token_allowlist", [])
         ),
         discourse_markers=_as_normalized_list(payload.get("discourse_markers", [])),
-        vague_outcome_nouns=_as_normalized_set(payload.get("vague_outcome_nouns", [])),
+        vague_tail_nouns=_as_normalized_set(
+            payload.get("vague_tail_nouns", payload.get("vague_outcome_nouns", []))
+        ),
+        soft_skill_markers=_as_normalized_list(payload.get("soft_skill_markers", [])),
+        academic_field_nouns=_as_normalized_set(payload.get("academic_field_nouns", [])),
+        light_modifier=_as_normalized_set(payload.get("light_modifier", [])),
     )
 
 

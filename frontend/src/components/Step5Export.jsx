@@ -1,28 +1,31 @@
 import React, { useState } from 'react'
-import { exportResume } from '../api'
+import { exportPdf } from '../api'
 
-export default function Step5Export({ resumeId, analysisId, acceptedChanges, onReset }) {
+export default function Step5Export({ resumeSections, acceptedChanges, onReset }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [downloaded, setDownloaded] = useState(false)
+  const [pdfUrl, setPdfUrl] = useState(null)
 
   async function handleExport() {
     setLoading(true)
     setError(null)
     try {
-      const blob = await exportResume(resumeId, analysisId, acceptedChanges)
+      const blob = await exportPdf(resumeSections)
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'tailored_resume.docx'
-      a.click()
-      URL.revokeObjectURL(url)
-      setDownloaded(true)
+      setPdfUrl(url)
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
+  }
+
+  function handleDownload() {
+    if (!pdfUrl) return
+    const a = document.createElement('a')
+    a.href = pdfUrl
+    a.download = 'tailored_resume.pdf'
+    a.click()
   }
 
   const changeCount = Object.keys(acceptedChanges).length
@@ -31,13 +34,27 @@ export default function Step5Export({ resumeId, analysisId, acceptedChanges, onR
     <div className="step">
       <h2>5) Export tailored resume</h2>
       <p>{changeCount} change{changeCount !== 1 ? 's' : ''} applied to the resume.</p>
-      <p className="muted">Export format: .docx (regardless of input format)</p>
 
-      <button onClick={handleExport} disabled={loading}>
-        {loading ? 'Generating…' : 'Download tailored .docx'}
-      </button>
+      {!pdfUrl && (
+        <button onClick={handleExport} disabled={loading}>
+          {loading ? 'Generating PDF...' : 'Generate PDF preview'}
+        </button>
+      )}
 
-      {downloaded && <p className="success">Downloaded! Start a new session below.</p>}
+      {pdfUrl && (
+        <>
+          <div className="pdf-preview">
+            <iframe src={pdfUrl} title="Resume PDF preview" />
+          </div>
+          <div className="pdf-actions">
+            <button onClick={handleDownload}>Download PDF</button>
+            <button className="secondary-btn" onClick={() => { URL.revokeObjectURL(pdfUrl); setPdfUrl(null) }}>
+              Regenerate
+            </button>
+          </div>
+        </>
+      )}
+
       {error && <p className="error">{error}</p>}
 
       <hr />

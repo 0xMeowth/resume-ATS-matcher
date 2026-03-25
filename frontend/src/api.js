@@ -37,15 +37,11 @@ export async function submitFeedback(analysisId, skillPhrase, bulletText, label)
   })
 }
 
-export async function exportResume(resumeId, analysisId, acceptedChanges) {
-  const res = await checkResponse(await fetch(`${BASE}/export`, {
+export async function exportPdf(sections) {
+  const res = await checkResponse(await fetch(`${BASE}/export/pdf`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      resume_id: resumeId,
-      analysis_id: analysisId,
-      accepted_changes: acceptedChanges,
-    }),
+    body: JSON.stringify({ sections }),
   }))
   return res.blob()
 }
