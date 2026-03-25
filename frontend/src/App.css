@@ -104,7 +104,7 @@ textarea, input, select, button {
   margin: 0 auto;
   padding: 0 16px 64px;
 }
-.app-wide { max-width: 1400px; }
+.app-wide { max-width: min(96vw, 1800px); }
 
 /* Frozen page header (title + wizard steps) — frosted glass */
 .page-header-sticky {
@@ -292,6 +292,12 @@ button:hover:not(:disabled) { background: var(--color-primary-hover); }
 }
 .link-btn:hover { background: none; color: var(--color-primary-hover); }
 
+/* JD textarea — expands to fill remaining viewport height */
+.jd-textarea {
+  min-height: clamp(180px, calc(100vh - var(--header-h, 160px) - 190px), 72vh);
+  resize: vertical;
+}
+
 /* Settings grid */
 .settings-grid {
   display: grid;
@@ -403,13 +409,7 @@ hr { border: none; border-top: 1px solid var(--color-border-light); margin: 20px
   top: calc(var(--header-h, 0px) + 20px);
   max-height: calc(100vh - var(--header-h, 0px) - 40px);
 }
-.suggestion-panel-wrapper {
-  flex: 0 0 300px;
-  position: sticky;
-  top: calc(var(--header-h, 0px) + 20px);
-  max-height: calc(100vh - var(--header-h, 0px) - 40px);
-  overflow-y: auto;
-}
+/* suggestion panel removed — cards are now inline below each role */
 
 /* Keyword panel scrolls internally */
 .keyword-panel {
@@ -720,9 +720,9 @@ hr { border: none; border-top: 1px solid var(--color-border-light); margin: 20px
 }
 .inject-btn:hover { background: var(--color-primary-ring); }
 
-/* ── Suggestion card ── */
+/* ── Suggestion card — inline below role textarea ── */
 .suggestion-card {
-  margin-top: 8px;
+  margin-top: 6px;
   padding: 12px 14px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -755,18 +755,38 @@ hr { border: none; border-top: 1px solid var(--color-border-light); margin: 20px
   border-radius: 3px;
 }
 .suggestion-close:hover { color: var(--color-text); background: var(--color-hover-overlay); }
-.suggestion-original {
+/* Word-level diff view */
+.suggestion-diff {
   font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  text-decoration: line-through;
-  margin-bottom: 6px;
-  line-height: 1.5;
+  line-height: 1.7;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  background: var(--color-input-bg);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-light);
 }
-.suggestion-arrow {
-  text-align: center;
-  color: var(--color-primary);
-  font-size: 14px;
-  margin-bottom: 6px;
+.diff-del {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+  text-decoration: line-through;
+  text-decoration-color: rgba(185, 28, 28, 0.5);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.diff-add {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+[data-theme="dark"] .diff-del {
+  background: rgba(248, 113, 113, 0.15);
+  color: #fca5a5;
+  text-decoration-color: rgba(252, 165, 165, 0.5);
+}
+[data-theme="dark"] .diff-add {
+  background: rgba(74, 222, 128, 0.12);
+  color: #86efac;
 }
 .suggestion-textarea {
   width: 100%;
@@ -774,12 +794,48 @@ hr { border: none; border-top: 1px solid var(--color-border-light); margin: 20px
   border: 1px solid var(--color-input-border);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
   background: var(--color-input-bg);
   color: var(--color-text);
-  min-height: 64px;
+  min-height: 48px;
 }
 .suggestion-textarea:focus { outline: none; border-color: var(--color-primary); }
+
+/* Collapsed chip */
+.suggestion-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-top: 6px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  transition: background 0.15s;
+}
+.suggestion-chip:hover { background: var(--color-primary-tint); }
+.suggestion-chip-preview {
+  flex: 1;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+}
+.suggestion-chip-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.suggestion-chip-expand {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
 .suggestion-actions {
   display: flex;
   gap: 8px;

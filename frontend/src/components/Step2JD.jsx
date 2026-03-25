@@ -29,7 +29,7 @@ export default function Step2JD({ resumeId, lowConfidence, jdText, onJdTextChang
       )}
       <form onSubmit={handleSubmit}>
         <textarea
-          rows={10}
+          className="jd-textarea"
           placeholder="Paste job description text here…"
           value={jdText}
           onChange={e => onJdTextChange(e.target.value)}

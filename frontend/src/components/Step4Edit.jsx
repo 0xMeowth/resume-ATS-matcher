@@ -30,10 +30,13 @@ function AutoTextarea({ value, onChange, className }) {
 
   useLayoutEffect(() => { _resize() }, [displayValue, _resize])
 
-  // Re-measure once fonts and layout have settled on initial mount
+  // Re-measure on mount (fonts/layout settle) and on any width change (window resize, monitor switch)
   useEffect(() => {
-    const id = requestAnimationFrame(() => _resize())
-    return () => cancelAnimationFrame(id)
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(() => _resize())
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [_resize])
 
   const takeSnapshot = useCallback((val) => {
@@ -147,6 +150,9 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
   // Injection targeting: multi-select chips + per-bullet suggestion cards
   const [selectedPhrases, setSelectedPhrases] = useState(new Set())
   const [suggestions, setSuggestions] = useState([]) // [{bulletId, bulletText, phrases, suggestedText, loading}]
+  // cardOrder tracks insertion order for collapse logic (last 2 expanded by default)
+  const [cardOrder, setCardOrder] = useState([])
+  const [collapsedCards, setCollapsedCards] = useState(new Set())
 
   // Escape cancels targeting mode
   useEffect(() => {
@@ -201,6 +207,11 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
     }))
     setSuggestions(loadingCards)
 
+    // Track insertion order; auto-collapse all but the 2 most recent cards
+    const newIds = loadingCards.map(c => c.bulletId)
+    setCardOrder(newIds)
+    setCollapsedCards(new Set())
+
     // Fire parallel LLM calls per distinct bullet
     await Promise.all(loadingCards.map(async (card) => {
       try {
@@ -227,6 +238,8 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
       }))
     )
     setSuggestions(prev => prev.filter(s => s.bulletId !== bulletId))
+    setCardOrder(prev => prev.filter(id => id !== bulletId))
+    setCollapsedCards(prev => { const n = new Set(prev); n.delete(bulletId); return n })
   }, [onSectionsChange])
 
   const _escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -435,6 +448,32 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
                         + Add {selectedPhrases.size === 1 ? `"${[...selectedPhrases][0]}"` : `${selectedPhrases.size} keywords`} here
                       </button>
                     )}
+                    {/* Inline suggestion cards for bullets in this role */}
+                    {suggestions
+                      .filter(s => role.bullets.some(b => b.bullet_id === s.bulletId))
+                      .map(s => (
+                        <SuggestionCard
+                          key={s.bulletId}
+                          phrase={s.phrases.join(', ')}
+                          originalText={s.bulletText}
+                          suggestedText={s.suggestedText}
+                          loading={s.loading}
+                          collapsed={collapsedCards.has(s.bulletId)}
+                          onToggleCollapse={() => setCollapsedCards(prev => {
+                            const n = new Set(prev)
+                            if (n.has(s.bulletId)) n.delete(s.bulletId)
+                            else n.add(s.bulletId)
+                            return n
+                          })}
+                          onAccept={(text) => handleSuggestionAccept(s.bulletId, text)}
+                          onSkip={() => {
+                            setSuggestions(prev => prev.filter(x => x.bulletId !== s.bulletId))
+                            setCardOrder(prev => prev.filter(id => id !== s.bulletId))
+                            setCollapsedCards(prev => { const n = new Set(prev); n.delete(s.bulletId); return n })
+                          }}
+                        />
+                      ))
+                    }
                   </div>
                 )
               })}
@@ -447,19 +486,6 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
         </div>
       </div>
 
-      <div className="suggestion-panel-wrapper">
-        {suggestions.map(s => (
-          <SuggestionCard
-            key={s.bulletId}
-            phrase={s.phrases.join(', ')}
-            originalText={s.bulletText}
-            suggestedText={s.suggestedText}
-            loading={s.loading}
-            onAccept={(text) => handleSuggestionAccept(s.bulletId, text)}
-            onSkip={() => setSuggestions(prev => prev.filter(x => x.bulletId !== s.bulletId))}
-          />
-        ))}
-      </div>
     </div>
   )
 }
