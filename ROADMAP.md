@@ -24,7 +24,7 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 3a: Schema + migration script | done | `db/migrate.py` + `db/connection.py`; 3 tables (jobs, resumes, cv_pairs) + 4 indexes; idempotent; verified |
 | 3b: DB logging in FastAPI | done | `db/writer.py` log_export(); called from export endpoint; lifespan auto-migrates on startup; integration tested |
 | 3c: sqlite-vec extension | done | `cv_pair_embeddings` vec0 virtual table (FLOAT[384]); `_load_vec()` in connection.py; embedding written in log_export(); integration tested |
-| 4a: Ollama rewrite integration | done | httpx + asyncio.gather; graceful fallback to stub on Ollama error; 4 tests |
+| 4a: Ollama rewrite integration | done | httpx + asyncio.gather; graceful fallback to stub on Ollama error; 4 tests. Batch `generate_async` removed in Phase 15 — was ~45 LLM calls/analysis for the retired Step4ReviewLegacy UI; replaced by on-demand `suggest_single` |
 | 5a: Seed script | blocked | Needs real export data in DB first |
 | 5b: Vector search endpoint | blocked | Needs seed data |
 | 5c: End-to-end RAG flow | blocked | Needs seed data |

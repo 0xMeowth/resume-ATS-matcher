@@ -79,7 +79,6 @@ export default function App() {
   // Analysis results
   const [analysisId, setAnalysisId] = useState(null)
   const [skillMatches, setSkillMatches] = useState([])
-  const [rewriteSuggestions, setRewriteSuggestions] = useState([])
   const [injectionHints, setInjectionHints] = useState({})
   const [debugEvents, setDebugEvents] = useState(null)
 
@@ -100,8 +99,6 @@ export default function App() {
     return () => observer.disconnect()
   }, [])
 
-  // Step 4 state (lifted so edits survive navigation)
-  const [edits, setEdits] = useState({})
   const [acceptedChanges, setAcceptedChanges] = useState({})
 
   // Steps 3–5 are stale when jdText has changed since the last analysis run
@@ -116,25 +113,21 @@ export default function App() {
     // Clear all analysis state; keep jdText/settings so user doesn't have to re-paste
     setAnalysisId(null)
     setSkillMatches([])
-    setRewriteSuggestions([])
+    setInjectionHints({})
     setDebugEvents(null)
-    setEdits({})
     setAcceptedChanges({})
     setLastAnalyzedJdText(null)
     setStep(2)
     setMaxStep(2)
   }
 
-  function handleAnalyzeDone({ analysis_id, skill_matches, rewrite_suggestions, injection_hints, debug_events }) {
+  function handleAnalyzeDone({ analysis_id, skill_matches, injection_hints, debug_events }) {
     setAnalysisId(analysis_id)
     setSkillMatches(skill_matches)
-    setRewriteSuggestions(rewrite_suggestions)
     setInjectionHints(injection_hints || {})
     setDebugEvents(debug_events)
     setLastAnalyzedJdText(jdText)
     analyzedSectionsRef.current = JSON.parse(JSON.stringify(resumeSections))
-    // Reset step 4/5 state — prior accepted changes are now for a different analysis
-    setEdits(Object.fromEntries(rewrite_suggestions.map(s => [s.bullet_id, s.original_text])))
     setAcceptedChanges({})
     setStep(3)
     setMaxStep(3)
@@ -173,10 +166,8 @@ export default function App() {
     setLastAnalyzedJdText(null)
     setAnalysisId(null)
     setSkillMatches([])
-    setRewriteSuggestions([])
     setInjectionHints({})
     setDebugEvents(null)
-    setEdits({})
     setAcceptedChanges({})
   }
 

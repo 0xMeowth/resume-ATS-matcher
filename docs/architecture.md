@@ -1,6 +1,6 @@
 # Architecture
 
-A human-in-the-loop resume tailoring tool. The user uploads a resume, provides a job description, reviews keyword coverage, edits AI-generated rewrite suggestions, and exports a tailored `.docx`.
+A human-in-the-loop resume tailoring tool. The user uploads a resume, provides a job description, reviews keyword coverage, edits their resume with optional AI-assisted keyword injection, and exports a tailored PDF.
 
 ---
 
@@ -92,10 +92,9 @@ User (browser)
     │       sigmoid-normalised score replaces cosine before threshold comparison
     │  Output: List[PhraseMatch] with match_type + evidence_bullet_id
     │
-[RewriteEngine]  (async, Ollama)
-    │  For each non-exact match with a weak/missing label, calls Ollama to generate
-    │  a suggested bullet rewrite. Falls back to stub if Ollama is unavailable.
-    │  Output: List[RewriteSuggestion]
+[_compute_injection_hints]  (free — reuses already-computed embeddings)
+    │  For each missing keyword: finds best-matching bullet per role via dot product
+    │  Output: dict[phrase → dict[role_key → {bullet_id, score}]]
     │
     │  Analysis stored in-memory as AnalysisEntry (keyed by analysis_id UUID)
     ▼
@@ -103,13 +102,18 @@ User (browser)
     │  User reviews skill_matches table; clicks +/- to label each row
     │    → POST /api/feedback  →  log_feedback()  →  skill_feedback table
     │
-    │  Step 4 — Review tab (frontend)
-    │  User accepts/edits rewrite suggestions per bullet
+    │  Step 4 — Edit Resume (frontend)
+    │  Two-column: editable resume (left) + live keyword panel (right)
+    │  User clicks a missing keyword chip → targeting mode activates
+    │    → clicks "+ Add here" on a role → POST /api/rewrite/suggest (on-demand LLM)
+    │    → SuggestionCard appears: original + editable rewrite + Use this / Skip
+    │  If the targeted role was edited since analysis:
+    │    → POST /api/rewrite/embed-role re-embeds that role's bullets silently
     │
-    │  Step 5 — POST /api/export
+    │  Step 5 — POST /api/export/pdf
     ▼
-[Exporter]
-    │  Applies accepted_changes (bullet_id → new_text) back to original .docx bytes
+[render_pdf]  (weasyprint)
+    │  Renders resumeSections JSON as HTML → PDF bytes
     │
 [log_export()]  (db/writer.py)
     │  Writes atomically to: jobs, resumes, cv_pairs, cv_pair_embeddings
@@ -145,8 +149,8 @@ State is held in `app.state` — not persisted across restarts.
 | `src/ats_matcher/phrase_ranker.py` | MMR / TF-IDF phrase selection |
 | `src/ats_matcher/embedding_engine.py` | `bge-small-en-v1.5` wrapper, asymmetric prefix |
 | `src/ats_matcher/matching_engine.py` | Exact + semantic match classification |
-| `src/ats_matcher/rewrite_engine.py` | Ollama async rewrite suggestions |
-| `src/ats_matcher/exporter.py` | Apply edits back to `.docx` |
+| `src/ats_matcher/rewrite_engine.py` | On-demand single-bullet rewrite (`suggest_single`); batch `generate_async` removed (Phase 15) |
+| `src/ats_matcher/exporter.py` | Apply edits back to `.docx` (Streamlit legacy path only) |
 | `src/ats_matcher/models.py` | Shared dataclasses (`ResumeData`, `PhraseMatch`, etc.) |
 | `config/skill_extraction.yaml` | Stopwords, allowlists, light-head terms for JD parsing |
 | `db/migrate.py` | Schema creation (idempotent) |
@@ -165,8 +169,8 @@ State is held in `app.state` — not persisted across restarts.
 | 1 Upload | `Step1Upload` | File picker → `POST /api/resume` → stores `resume_id` |
 | 2 Job Description | `Step2JD` | JD text/URL input + analysis settings → `POST /api/jd/analyze` |
 | 3 Coverage | `Step3Coverage` | Skill coverage table; `+`/`-` feedback buttons → `POST /api/feedback` |
-| 4 Review | `Step4Review` | Rewrite suggestions per bullet; accept/edit |
-| 5 Export | `Step5Export` | `POST /api/export` → downloads tailored `.docx` |
+| 4 Edit Resume | `Step4Edit` | Two-column editor: free-text resume (left) + live keyword panel (right); click-to-inject missing keywords via on-demand LLM rewrite |
+| 5 Export | `Step5Export` | `POST /api/export/pdf` → inline PDF preview + download |
 
 Steps 3–5 are marked **stale** (yellow) if the JD text changes after an analysis has been run, preventing the user from exporting results based on an outdated analysis.
 

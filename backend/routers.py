@@ -71,13 +71,6 @@ class PhraseMatchOut(BaseModel):
     evidence_text: str | None
 
 
-class RewriteSuggestionOut(BaseModel):
-    bullet_id: str
-    phrase: str
-    original_text: str
-    suggestion_text: str
-
-
 class InjectionHintOut(BaseModel):
     bullet_id: str
     score: float
@@ -86,7 +79,6 @@ class InjectionHintOut(BaseModel):
 class AnalyzeResponse(BaseModel):
     analysis_id: str
     skill_matches: list[PhraseMatchOut]
-    rewrite_suggestions: list[RewriteSuggestionOut]
     injection_hints: dict[str, dict[str, InjectionHintOut]] = Field(default_factory=dict)
     debug_events: list[dict] | None = None
 
@@ -308,8 +300,6 @@ async def analyze_jd(body: AnalyzeRequest, request: Request):
         rerank_top_k=cfg.rerank_top_k,
     )
 
-    suggestions = await RewriteEngine().generate_async(skill_matches, resume_data)
-
     injection_hints = _compute_injection_hints(
         skill_matches=skill_matches,
         skill_terms=skill_terms,
@@ -325,7 +315,6 @@ async def analyze_jd(body: AnalyzeRequest, request: Request):
         jd_text=raw_text,
         jd_url=body.jd_url,
         skill_matches=skill_matches,
-        rewrite_suggestions=suggestions,
         doc_embedding=doc_embedding,
         injection_hints=injection_hints,
     )
@@ -341,15 +330,6 @@ async def analyze_jd(body: AnalyzeRequest, request: Request):
                 evidence_text=m.evidence_text,
             )
             for m in skill_matches
-        ],
-        rewrite_suggestions=[
-            RewriteSuggestionOut(
-                bullet_id=sug.bullet_id,
-                phrase=sug.phrase,
-                original_text=sug.original_text,
-                suggestion_text=sug.suggestion_text,
-            )
-            for sug in suggestions
         ],
         injection_hints={
             phrase: {

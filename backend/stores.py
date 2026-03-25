@@ -6,7 +6,7 @@ from typing import Optional
 
 import numpy as np
 
-from ats_matcher.models import PhraseMatch, ResumeData, RewriteSuggestion
+from ats_matcher.models import PhraseMatch, ResumeData
 
 
 @dataclass
@@ -22,7 +22,6 @@ class AnalysisEntry:
     jd_text: str
     jd_url: str | None
     skill_matches: list[PhraseMatch]
-    rewrite_suggestions: list[RewriteSuggestion]
     doc_embedding: Optional[np.ndarray] = None
     injection_hints: Optional[dict] = None
 
