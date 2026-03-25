@@ -1,6 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react'
 
-export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgnore, resumeText, flashedPhrases, lostPhrases }) {
+export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgnore, resumeText, flashedPhrases, lostPhrases, activeChip, onChipClick }) {
   const scrollRef = useRef(null)
   const [showTopFade, setShowTopFade] = useState(false)
   const [showBottomFade, setShowBottomFade] = useState(true)
@@ -66,11 +66,16 @@ export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgno
       {showTopFade && <div className="kp-scroll-fade kp-scroll-fade-top" />}
       <ul className="kp-list">
         {dedupedKeywords.map((k, index) => {
+          const isClickable = !k.ignored && !k.exactMatch && !!onChipClick
+          const isActive = k.phrase === activeChip
+
           let cls = 'kp-item'
           if (k.ignored) cls += ' kp-ignored'
           else if (k.exactMatch) cls += ' kp-matched'
           else if (k.semanticHint) cls += ' kp-semantic'
           else cls += ' kp-unmatched'
+          if (isActive) cls += ' kp-active'
+          if (isClickable) cls += ' kp-clickable'
           if (flashedPhrases && flashedPhrases.has(k.phrase)) cls += ' kp-flash'
           if (lostPhrases && lostPhrases.has(k.phrase)) cls += ' kp-flash-pink'
 
@@ -79,7 +84,12 @@ export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgno
               key={k.phrase}
               className={cls}
               style={{ animationDelay: `${index * 30}ms` }}
-              title={k.semanticHint ? 'Semantically covered — add exact phrase for ATS' : undefined}
+              title={
+                isActive ? `Targeting "${k.phrase}" — click a role` :
+                isClickable ? `Click to inject "${k.phrase}" into a bullet` :
+                k.semanticHint ? 'Semantically covered — add exact phrase for ATS' : undefined
+              }
+              onClick={isClickable ? () => onChipClick(isActive ? null : k.phrase) : undefined}
             >
               <span className="kp-icon">
                 {k.ignored ? '—' : k.exactMatch ? '✓' : k.semanticHint ? '~' : '✗'}
@@ -88,7 +98,7 @@ export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgno
               <button
                 className="kp-ignore-btn"
                 title={k.ignored ? 'Restore keyword' : 'Ignore keyword'}
-                onClick={() => onToggleIgnore(k.phrase)}
+                onClick={e => { e.stopPropagation(); onToggleIgnore(k.phrase) }}
               >
                 {k.ignored ? '↩' : '×'}
               </button>

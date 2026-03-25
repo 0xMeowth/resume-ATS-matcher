@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from 'react'
 import KeywordPanel from './KeywordPanel'
+import SuggestionCard from './SuggestionCard'
+import { rewriteSuggest, embedRole } from '../api'
 
 function AutoTextarea({ value, onChange, className }) {
   const ref = useRef(null)
@@ -118,7 +120,14 @@ function AutoTextarea({ value, onChange, className }) {
   )
 }
 
-export default function Step4Edit({ resumeSections, skillMatches, onSectionsChange, onDone }) {
+function _isRoleStale(si, ri, currentSections, analyzedSections) {
+  const a = analyzedSections?.[si]?.roles?.[ri]
+  const c = currentSections?.[si]?.roles?.[ri]
+  if (!a || !c) return false
+  return a.bullets.map(b => b.text).join('\n') !== c.bullets.map(b => b.text).join('\n')
+}
+
+export default function Step4Edit({ resumeSections, skillMatches, onSectionsChange, onDone, analysisId, injectionHints, analyzedSections }) {
   const [ignoredSkills, setIgnoredSkills] = useState(new Set())
   const [flashedPhrases, setFlashedPhrases] = useState(new Set())
   const [flashedRoles, setFlashedRoles] = useState(new Set())
@@ -127,6 +136,67 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
   const prevMatchedRef = useRef(null)
   const flashTimerRef = useRef(null)
   const lostTimerRef = useRef(null)
+
+  // Injection targeting
+  const [activeChip, setActiveChip] = useState(null)
+  const [suggestion, setSuggestion] = useState(null)
+
+  // Escape cancels targeting mode
+  useEffect(() => {
+    if (!activeChip) return
+    const handler = (e) => { if (e.key === 'Escape') setActiveChip(null) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [activeChip])
+
+  const handleChipClick = useCallback((phrase) => {
+    setActiveChip(phrase)
+    setSuggestion(null)
+  }, [])
+
+  const handleRoleClick = useCallback(async (si, ri) => {
+    if (!activeChip) return
+    const roleKey = `${si}-${ri}`
+
+    let hint = (injectionHints?.[activeChip] || {})[roleKey]
+
+    // Silently re-embed if role has been edited since analysis
+    if (hint && _isRoleStale(si, ri, resumeSections, analyzedSections)) {
+      try {
+        const role = resumeSections[si].roles[ri]
+        hint = await embedRole(analysisId, activeChip, role.bullets.map(b => ({ bullet_id: b.bullet_id, text: b.text })))
+      } catch { /* use stale hint */ }
+    }
+
+    const role = resumeSections[si]?.roles[ri]
+    if (!role) return
+    const bullet = (hint && role.bullets.find(b => b.bullet_id === hint.bullet_id)) || role.bullets[0]
+    if (!bullet) return
+
+    setActiveChip(null)
+    setSuggestion({ roleKey, phrase: activeChip, bulletId: bullet.bullet_id, bulletText: bullet.text, suggestedText: null, loading: true })
+
+    try {
+      const result = await rewriteSuggest(analysisId, activeChip, bullet.text)
+      setSuggestion(prev => prev?.roleKey === roleKey ? { ...prev, suggestedText: result.suggested_text, loading: false } : prev)
+    } catch {
+      setSuggestion(prev => prev?.roleKey === roleKey ? { ...prev, suggestedText: `Add keyword: ${activeChip}`, loading: false } : prev)
+    }
+  }, [activeChip, injectionHints, analysisId, resumeSections, analyzedSections])
+
+  const handleSuggestionAccept = useCallback((text) => {
+    if (!suggestion) return
+    onSectionsChange(prev =>
+      prev.map(s => ({
+        ...s,
+        roles: s.roles.map(r => ({
+          ...r,
+          bullets: r.bullets.map(b => b.bullet_id === suggestion.bulletId ? { ...b, text } : b),
+        })),
+      }))
+    )
+    setSuggestion(null)
+  }, [suggestion, onSectionsChange])
 
   const _escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -273,6 +343,13 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
         <div className="step">
           <h2>4) Edit Resume</h2>
 
+          {activeChip && (
+            <div className="targeting-banner">
+              Adding <strong>"{activeChip}"</strong> — click "+ Add here" in the role you want to modify
+              <button className="targeting-cancel" onClick={() => setActiveChip(null)}>Cancel</button>
+            </div>
+          )}
+
           {resumeSections.length === 0 && (
             <p className="muted">No resume sections found. Please upload a resume first.</p>
           )}
@@ -285,6 +362,7 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
                 onChange={e => handleSectionTitleChange(si, e.target.value)}
               />
               {section.roles.map((role, ri) => {
+                const roleKey = `${si}-${ri}`
                 const roleValue = role.bullets
                   .map(b => b.text)
                   .filter((t, i, arr) => t.trim() || arr.slice(i).some(x => x.trim()))
@@ -300,9 +378,24 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
                     )}
                     {role.bullets.length > 0 && (
                       <AutoTextarea
-                        className={`bullet-textarea${flashedRoles.has(`${si}-${ri}`) ? ' textarea-flash' : lostRoles.has(`${si}-${ri}`) ? ' textarea-flash-pink' : ''}`}
+                        className={`bullet-textarea${flashedRoles.has(roleKey) ? ' textarea-flash' : lostRoles.has(roleKey) ? ' textarea-flash-pink' : ''}`}
                         value={roleValue}
                         onChange={e => handleRoleTextChange(si, ri, e.target.value)}
+                      />
+                    )}
+                    {activeChip && (
+                      <button className="inject-btn" onClick={() => handleRoleClick(si, ri)}>
+                        + Add "{activeChip}" here
+                      </button>
+                    )}
+                    {suggestion?.roleKey === roleKey && (
+                      <SuggestionCard
+                        phrase={suggestion.phrase}
+                        originalText={suggestion.bulletText}
+                        suggestedText={suggestion.suggestedText}
+                        loading={suggestion.loading}
+                        onAccept={handleSuggestionAccept}
+                        onSkip={() => setSuggestion(null)}
                       />
                     )}
                   </div>
@@ -325,6 +418,8 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
           resumeText={resumeText}
           flashedPhrases={flashedPhrases}
           lostPhrases={lostPhrases}
+          activeChip={activeChip}
+          onChipClick={handleChipClick}
         />
       </div>
     </div>

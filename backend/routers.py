@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
+import numpy as np
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from ats_matcher.models import PhraseMatch, ResumeData
 from ats_matcher.pdf_exporter import render_pdf
 from db.writer import log_feedback
 from ats_matcher.matching_engine import MatchingEngine
@@ -76,10 +78,16 @@ class RewriteSuggestionOut(BaseModel):
     suggestion_text: str
 
 
+class InjectionHintOut(BaseModel):
+    bullet_id: str
+    score: float
+
+
 class AnalyzeResponse(BaseModel):
     analysis_id: str
     skill_matches: list[PhraseMatchOut]
     rewrite_suggestions: list[RewriteSuggestionOut]
+    injection_hints: dict[str, dict[str, InjectionHintOut]] = Field(default_factory=dict)
     debug_events: list[dict] | None = None
 
 
@@ -107,6 +115,71 @@ class FeedbackRequest(BaseModel):
     skill_phrase: str
     bullet_text: Optional[str] = None
     label: str  # 'covered' or 'not_covered'
+
+
+class RewriteSuggestRequest(BaseModel):
+    analysis_id: str
+    phrase: str
+    bullet_text: str
+
+
+class RewriteSuggestResponse(BaseModel):
+    suggested_text: str
+
+
+class EmbedRoleRequest(BaseModel):
+    analysis_id: str
+    phrase: str
+    bullets: list[BulletIn]
+
+
+class EmbedRoleResponse(BaseModel):
+    bullet_id: str
+    score: float
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _compute_injection_hints(
+    skill_matches: list[PhraseMatch],
+    skill_terms: list[str],
+    skill_embeddings: np.ndarray,
+    bullet_embeddings: np.ndarray,
+    bullet_ids: list[str],
+    resume_data: ResumeData,
+) -> dict[str, dict[str, dict]]:
+    """For each missing keyword, find the best bullet per role (dot product = cosine, embeddings are L2-normalised)."""
+    if bullet_embeddings.size == 0:
+        return {}
+    bullet_role: dict[str, tuple[int, int]] = {}
+    for si, section in enumerate(resume_data.sections):
+        for ri, role in enumerate(section.roles):
+            for bullet in role.bullets:
+                bullet_role[bullet.bullet_id] = (si, ri)
+    phrase_to_idx = {p: i for i, p in enumerate(skill_terms)}
+    hints: dict[str, dict[str, dict]] = {}
+    for match in skill_matches:
+        if match.match_type != "missing":
+            continue
+        idx = phrase_to_idx.get(match.phrase)
+        if idx is None:
+            continue
+        phrase_vec = skill_embeddings[idx : idx + 1]
+        sims = np.dot(bullet_embeddings, phrase_vec.T).reshape(-1)
+        role_best: dict[str, tuple[str, float]] = {}
+        for i, bid in enumerate(bullet_ids):
+            rk = bullet_role.get(bid)
+            if rk is None:
+                continue
+            key = f"{rk[0]}-{rk[1]}"
+            score = float(sims[i])
+            if key not in role_best or score > role_best[key][1]:
+                role_best[key] = (bid, score)
+        hints[match.phrase] = {
+            k: {"bullet_id": bid, "score": sc}
+            for k, (bid, sc) in role_best.items()
+        }
+    return hints
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
@@ -237,6 +310,15 @@ async def analyze_jd(body: AnalyzeRequest, request: Request):
 
     suggestions = await RewriteEngine().generate_async(skill_matches, resume_data)
 
+    injection_hints = _compute_injection_hints(
+        skill_matches=skill_matches,
+        skill_terms=skill_terms,
+        skill_embeddings=skill_embeddings,
+        bullet_embeddings=bullet_embeddings,
+        bullet_ids=bullet_ids,
+        resume_data=resume_data,
+    )
+
     analysis_id = new_id()
     request.app.state.analysis_store[analysis_id] = AnalysisEntry(
         resume_id=body.resume_id,
@@ -245,6 +327,7 @@ async def analyze_jd(body: AnalyzeRequest, request: Request):
         skill_matches=skill_matches,
         rewrite_suggestions=suggestions,
         doc_embedding=doc_embedding,
+        injection_hints=injection_hints,
     )
 
     return AnalyzeResponse(
@@ -268,6 +351,13 @@ async def analyze_jd(body: AnalyzeRequest, request: Request):
             )
             for sug in suggestions
         ],
+        injection_hints={
+            phrase: {
+                rk: InjectionHintOut(bullet_id=v["bullet_id"], score=v["score"])
+                for rk, v in role_hints.items()
+            }
+            for phrase, role_hints in injection_hints.items()
+        },
         debug_events=debug_events,
     )
 
@@ -295,3 +385,30 @@ def export_pdf(body: PdfExportRequest):
 def submit_feedback(body: FeedbackRequest):
     log_feedback(body.analysis_id, body.skill_phrase, body.bullet_text, body.label)
     return Response(status_code=204)
+
+
+# ── Rewrite ───────────────────────────────────────────────────────────────────
+
+@router.post("/rewrite/suggest", response_model=RewriteSuggestResponse)
+async def rewrite_suggest(body: RewriteSuggestRequest, request: Request):
+    if request.app.state.analysis_store.get(body.analysis_id) is None:
+        raise HTTPException(status_code=404, detail="analysis_id not found")
+    suggested = await RewriteEngine().suggest_single(body.bullet_text, body.phrase)
+    return RewriteSuggestResponse(suggested_text=suggested)
+
+
+@router.post("/rewrite/embed-role", response_model=EmbedRoleResponse)
+async def embed_role(body: EmbedRoleRequest, request: Request):
+    if request.app.state.analysis_store.get(body.analysis_id) is None:
+        raise HTTPException(status_code=404, detail="analysis_id not found")
+    if not body.bullets:
+        raise HTTPException(status_code=400, detail="bullets required")
+    embedding_engine = request.app.state.embedding_engine
+    phrase_vec = embedding_engine.embed([body.phrase], prefix=BGE_QUERY_PREFIX)[0]
+    bullet_vecs = embedding_engine.embed([b.text for b in body.bullets])
+    sims = np.dot(bullet_vecs, phrase_vec).reshape(-1)
+    best_idx = int(np.argmax(sims))
+    return EmbedRoleResponse(
+        bullet_id=body.bullets[best_idx].bullet_id,
+        score=float(sims[best_idx]),
+    )

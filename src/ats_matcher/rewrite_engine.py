@@ -148,6 +148,14 @@ class RewriteEngine:
             )
         return suggestions
 
+    async def suggest_single(self, bullet_text: str, phrase: str) -> str:
+        """Rewrite a single bullet to incorporate the given keyword."""
+        config = self._config
+        async with httpx.AsyncClient(timeout=config.timeout) as client:
+            if config.name == "ollama":
+                return await _ollama_rewrite(client, bullet_text, phrase, config)
+            return await _openai_compat_rewrite(client, bullet_text, phrase, config)
+
     async def generate_async(
         self, matches: List[PhraseMatch], resume: ResumeData
     ) -> List[RewriteSuggestion]:

@@ -80,11 +80,13 @@ export default function App() {
   const [analysisId, setAnalysisId] = useState(null)
   const [skillMatches, setSkillMatches] = useState([])
   const [rewriteSuggestions, setRewriteSuggestions] = useState([])
+  const [injectionHints, setInjectionHints] = useState({})
   const [debugEvents, setDebugEvents] = useState(null)
 
   // Resume sections (structured data from upload)
   const [resumeSections, setResumeSections] = useState([])
   const originalSectionsRef = useRef([])
+  const analyzedSectionsRef = useRef([])
 
   // Measure sticky page header height → CSS custom property for panel offset
   const pageHeaderRef = useRef(null)
@@ -123,12 +125,14 @@ export default function App() {
     setMaxStep(2)
   }
 
-  function handleAnalyzeDone({ analysis_id, skill_matches, rewrite_suggestions, debug_events }) {
+  function handleAnalyzeDone({ analysis_id, skill_matches, rewrite_suggestions, injection_hints, debug_events }) {
     setAnalysisId(analysis_id)
     setSkillMatches(skill_matches)
     setRewriteSuggestions(rewrite_suggestions)
+    setInjectionHints(injection_hints || {})
     setDebugEvents(debug_events)
     setLastAnalyzedJdText(jdText)
+    analyzedSectionsRef.current = JSON.parse(JSON.stringify(resumeSections))
     // Reset step 4/5 state — prior accepted changes are now for a different analysis
     setEdits(Object.fromEntries(rewrite_suggestions.map(s => [s.bullet_id, s.original_text])))
     setAcceptedChanges({})
@@ -163,12 +167,14 @@ export default function App() {
     setLowConfidence(false)
     setResumeSections([])
     originalSectionsRef.current = []
+    analyzedSectionsRef.current = []
     setJdText('')
     setSettings(JD_DEFAULTS)
     setLastAnalyzedJdText(null)
     setAnalysisId(null)
     setSkillMatches([])
     setRewriteSuggestions([])
+    setInjectionHints({})
     setDebugEvents(null)
     setEdits({})
     setAcceptedChanges({})
@@ -223,6 +229,9 @@ export default function App() {
             skillMatches={skillMatches}
             onSectionsChange={setResumeSections}
             onDone={handleReviewDone}
+            analysisId={analysisId}
+            injectionHints={injectionHints}
+            analyzedSections={analyzedSectionsRef.current}
           />
         )}
         {step === 5 && (

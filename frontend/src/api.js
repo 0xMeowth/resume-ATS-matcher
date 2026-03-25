@@ -37,6 +37,24 @@ export async function submitFeedback(analysisId, skillPhrase, bulletText, label)
   })
 }
 
+export async function rewriteSuggest(analysisId, phrase, bulletText) {
+  const res = await checkResponse(await fetch(`${BASE}/rewrite/suggest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ analysis_id: analysisId, phrase, bullet_text: bulletText }),
+  }))
+  return res.json()
+}
+
+export async function embedRole(analysisId, phrase, bullets) {
+  const res = await checkResponse(await fetch(`${BASE}/rewrite/embed-role`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ analysis_id: analysisId, phrase, bullets }),
+  }))
+  return res.json()
+}
+
 export async function exportPdf(sections) {
   const res = await checkResponse(await fetch(`${BASE}/export/pdf`, {
     method: 'POST',

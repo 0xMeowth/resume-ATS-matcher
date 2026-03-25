@@ -24,6 +24,7 @@ class AnalysisEntry:
     skill_matches: list[PhraseMatch]
     rewrite_suggestions: list[RewriteSuggestion]
     doc_embedding: Optional[np.ndarray] = None
+    injection_hints: Optional[dict] = None
 
 
 def new_id() -> str:
