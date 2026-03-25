@@ -40,7 +40,7 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 9a: Text preprocessing (HTML, URLs, emails, slash-compounds) | done | `_preprocess_text()` strips HTML/URLs/emails; slash-compound tokenizer rules; 4 new tests |
 | 9b: Exclusion list additions (education, company IDs, qualifications) | done | 16 terms added to domain_stoplist; 2 new tests |
 | 9c: Extraction logic fixes (substring suppression, lemmatization, company names) | done | C1: independent phrase survival in `_suppress_substrings`; C2: `_lemma_dedup`; C3: `_extract_company_stopwords`; 3 new tests |
-| 9d: MCF dictionary integration (accumulate, load as MCF_SKILL, seed) | done | 782 skills from 134 JDs; `build_mcf_dict.py`; auto-accumulate in `fetch_jds.py`; MCF_SKILL entity ruler |
+| 9d: MCF dictionary integration (accumulate, load as MCF_SKILL, seed) | done | 5,212 skills from 5,028 JDs (38 keywords); `fetch_jds.py` batch mode + pagination; MCF_SKILL entity ruler |
 | 9e: Analysis report + drop JobBERT documentation | done | `docs/test_extraction_comparison.md`; `scripts/extract_legitimate_jobbert.py`; Model Inventory updated |
 | 9f: Documentation + custom skill source | done | `config/custom_skills.yaml` (22 terms); CUSTOM_SKILL entity ruler; three-source architecture complete |
 | 10a: Wire resume sections into App state | done | `resumeSections` + `originalSectionsRef` in App.jsx; deep-clone for diff |
@@ -68,6 +68,21 @@ Tech stack: FastAPI + React, Ollama (local LLM), SQLite + sqlite-vec.
 | 13b: Keyword panel UX (x button, transitions, entrance) | done | Always-visible dismiss button; 300ms colour transitions; staggered slide-in |
 | 13c: Editable headers + free-text per role | done | Section/role titles → `<input>`; per-bullet textareas → one `<textarea>` per role (see architecture.md § design decision) |
 | 13d: Keyword match flash animation | done | 600ms green flash on keyword panel item + role textarea when keyword transitions to matched |
+| 13e: Step 4 UX fixes | done | Hide empty-bullet roles, bullet prefix display, header editability hover states, per-textarea undo/redo, green+pink flash animations |
+| 13f: Textarea auto-size on initial load | pending | On initial render (before first keystroke), textareas show extra empty space in Safari/Brave; snaps correct on first edit. Headless Chrome measures correctly. Likely Safari flex-width not stabilised when useLayoutEffect fires. |
+| 14a: PDF visual-order sorting | done | Sort extracted lines by (page_idx, top) instead of stream order; recompute y_gap; fixes Education-before-Experience |
+| 14b: Spaced-letter normalisation + section-split fix | done | "E X P E R I E N C E" → "EXPERIENCE"; inside known sections, only keyword headings create new sections; fixes company names becoming separate sections |
+| 14c: Contact info detection | done | Pre-heading pass: regex for phone/email/URL; largest-font line = name (section title), remaining pre-heading lines = contact bullets (role with title=None); 48 tests passing |
+| 14d: Categorical keyword filters | done | Conjunction splitting, trailing light-head cascade, vague_tail_nouns (expanded from vague_outcome_nouns), soft_skill_markers, academic_field_nouns, light_modifier stripping, adjective-only fragment rejection; eliminates false positives systematically without growing exclude_list |
+| 14e: Multi-source JD fetch (Greenhouse + Lever) | done | Extended fetch_jds.py with --source greenhouse/lever --companies flags; Binance (Lever), Stripe/Coinbase/Airbnb/Datadog (Greenhouse) confirmed working; 50 JDs fetched as fixtures |
+| 14f: Extraction tuning pass (EEO strip + config) | done | EEO/legal boilerplate regex strip in preprocessing; expanded exclude_list, vague_tail_nouns, light_modifier, light_head from 50-JD analysis; 23% noise reduction (4646→3583 rows) |
+| 15a: LLM-assisted rewrite in Step 4 | pending | Per-role rewrite via Ollama; click-to-select keywords in panel, inline preview card. UX preference order: (1) per-role user-dispatched, (2) whole-CV auto-distribute, (3) LLM suggests placement then user confirms. Start with option 1. |
+| 16a: PDF export — weasyprint backend | done | pdf_exporter.py (HTML template + weasyprint); POST /api/export/pdf endpoint accepts resumeSections JSON |
+| 16b: PDF export — preview UX | done | Step5Export rewritten: inline PDF preview (iframe), Download + Regenerate buttons |
+| 16c: Remove DOCX export path | done | Old DOCX endpoint + ExportRequest + exportResume removed; exporter.py kept for Streamlit legacy path only |
+| 17a: Dark mode — CSS design tokens | done | ~45 CSS variables; all hardcoded hex colors replaced with var() references |
+| 17b: Dark mode — toggle + dark palette | done | [data-theme="dark"] with navy palette; sun/moon toggle; localStorage + prefers-color-scheme auto-detect |
+| 17c: Dark mode — polish all components | done | All components themed: keyword panel, flash animations, textareas, tables, tags, progress bar, PDF preview | Per-role rewrite via Ollama; click-to-select keywords in panel, inline preview card. UX preference order: (1) per-role user-dispatched, (2) whole-CV auto-distribute, (3) LLM suggests placement then user confirms. Start with option 1. |
 
 ---
 

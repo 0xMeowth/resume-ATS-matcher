@@ -1,0 +1,60 @@
+# MCF keyword batch file — keyword|count
+# Priority domains: 200 jobs each
+# Standard domains: 50 jobs each
+
+# --- Data & Analytics ---
+data analyst|200
+data engineer|200
+business analyst|200
+business intelligence|200
+analytics engineer|200
+ETL|200
+
+# --- AI / ML ---
+machine learning|200
+NLP|200
+computer vision|200
+MLOps|200
+deep learning|200
+agentic|200
+
+# --- Software & DevOps ---
+backend developer|200
+frontend developer|200
+full stack developer|200
+devops|200
+site reliability|200
+platform engineering|200
+cloud|200
+
+# --- Product & Management ---
+product manager|200
+technical product manager|200
+project manager|200
+engineering manager|200
+
+# --- Fintech & Quant ---
+quantitative analyst|200
+fintech|200
+risk analyst|200
+
+# --- Consulting & Strategy ---
+management consultant|200
+technology consultant|200
+solutions architect|200
+strategy consultant|200
+
+# --- Already fetched (re-fetch to 200) ---
+ai engineer|200
+data scientist|200
+software engineer|200
+
+# --- Standard (50 jobs each) ---
+# Cybersecurity & Infra
+cybersecurity|50
+network engineer|50
+systems administrator|50
+
+# Process & Quality
+process improvement|50
+quality assurance|50
