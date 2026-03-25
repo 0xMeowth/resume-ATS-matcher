@@ -12,9 +12,6 @@ COPY backend/ ./backend/
 
 RUN uv sync --frozen --no-dev
 
-# Download spaCy model at build time so first request isn't slow
-RUN uv run python -m spacy download en_core_web_sm
-
 # HuggingFace + sentence-transformers model cache (mounted as volume in compose)
 ENV HF_HOME=/app/.cache/huggingface
 ENV SENTENCE_TRANSFORMERS_HOME=/app/.cache/sentence_transformers
