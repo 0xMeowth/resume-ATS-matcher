@@ -16,7 +16,7 @@ COPY src/ ./src/
 COPY config/ ./config/
 COPY backend/ ./backend/
 
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev && uv pip install --no-deps -e .
 
 # HuggingFace + sentence-transformers model cache (mounted as volume in compose)
 ENV HF_HOME=/app/.cache/huggingface
