@@ -39,9 +39,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Resume ATS Matcher API", version="0.1.0", lifespan=lifespan)
 
+_frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[_frontend_url, "http://localhost:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
