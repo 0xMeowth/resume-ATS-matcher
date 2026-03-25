@@ -148,13 +148,13 @@ class RewriteEngine:
             )
         return suggestions
 
-    async def suggest_single(self, bullet_text: str, phrase: str) -> str:
-        """Rewrite a single bullet to incorporate the given keyword."""
+    async def suggest_single(self, bullet_text: str, phrases: list[str]) -> str:
+        """Rewrite a single bullet to incorporate one or more keywords."""
         config = self._config
         async with httpx.AsyncClient(timeout=config.timeout) as client:
             if config.name == "ollama":
-                return await _ollama_rewrite(client, bullet_text, phrase, config)
-            return await _openai_compat_rewrite(client, bullet_text, phrase, config)
+                return await _ollama_rewrite(client, bullet_text, phrases, config)
+            return await _openai_compat_rewrite(client, bullet_text, phrases, config)
 
     async def generate_async(
         self, matches: List[PhraseMatch], resume: ResumeData
@@ -207,10 +207,15 @@ async def _throttled(coro, sem: asyncio.Semaphore | None):
     return await coro
 
 
-def _build_user_msg(original_text: str, phrase: str) -> str:
+def _build_user_msg(original_text: str, phrases: list[str]) -> str:
+    if len(phrases) == 1:
+        kw_line = f'Keyword to incorporate: "{phrases[0]}"'
+    else:
+        kw_list = ", ".join(f'"{p}"' for p in phrases)
+        kw_line = f"Keywords to incorporate (weave all naturally): {kw_list}"
     return (
         f'Bullet: "{original_text}"\n'
-        f'Keyword to incorporate: "{phrase}"\n'
+        f'{kw_line}\n'
         "Rewritten bullet:"
     )
 
@@ -225,7 +230,7 @@ def _postprocess(text: str, config: ProviderConfig) -> str:
 async def _ollama_rewrite(
     client: httpx.AsyncClient,
     original_text: str,
-    phrase: str,
+    phrases: list[str],
     config: ProviderConfig,
 ) -> str:
     """POST to Ollama /api/chat. Returns stub hint on any error."""
@@ -233,7 +238,7 @@ async def _ollama_rewrite(
         "model": config.model,
         "messages": [
             {"role": "system", "content": config.system_prompt},
-            {"role": "user", "content": _build_user_msg(original_text, phrase)},
+            {"role": "user", "content": _build_user_msg(original_text, phrases)},
         ],
         "stream": False,
     }
@@ -243,13 +248,13 @@ async def _ollama_rewrite(
         return _postprocess(resp.json()["message"]["content"], config)
     except Exception as exc:
         logger.warning("Ollama rewrite failed (%s); using stub hint.", exc)
-        return f"Add keyword: {phrase}"
+        return f"Add keywords: {', '.join(phrases)}"
 
 
 async def _openai_compat_rewrite(
     client: httpx.AsyncClient,
     original_text: str,
-    phrase: str,
+    phrases: list[str],
     config: ProviderConfig,
 ) -> str:
     """POST to OpenAI-compatible /chat/completions. Returns stub hint on any error."""
@@ -257,7 +262,7 @@ async def _openai_compat_rewrite(
         "model": config.model,
         "messages": [
             {"role": "system", "content": config.system_prompt},
-            {"role": "user", "content": _build_user_msg(original_text, phrase)},
+            {"role": "user", "content": _build_user_msg(original_text, phrases)},
         ],
     }
     headers = {"Authorization": f"Bearer {config.api_key}"}
@@ -271,4 +276,4 @@ async def _openai_compat_rewrite(
         return _postprocess(resp.json()["choices"][0]["message"]["content"], config)
     except Exception as exc:
         logger.warning("%s rewrite failed (%s); using stub hint.", config.name, exc)
-        return f"Add keyword: {phrase}"
+        return f"Add keywords: {', '.join(phrases)}"

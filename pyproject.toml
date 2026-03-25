@@ -24,6 +24,7 @@ dependencies = [
     "sqlite-vec>=0.1.6",
     "httpx>=0.28.1",
     "weasyprint>=68.1",
+    "python-dotenv>=1.2.2",
 ]
 
 [tool.pytest.ini_options]

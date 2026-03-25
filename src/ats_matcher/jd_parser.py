@@ -48,6 +48,15 @@ _SLASH_COMPOUNDS = [
 
 logger = logging.getLogger(__name__)
 
+# Resolve config paths relative to the repo root (two levels up from src/ats_matcher/)
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_config_path(path: str) -> Path:
+    """Return an absolute Path, anchored to repo root if relative."""
+    p = Path(path)
+    return p if p.is_absolute() else _REPO_ROOT / p
+
 
 class _DebugCapture(logging.Handler):
     """Captures structured debug log records emitted during skill extraction."""
@@ -80,10 +89,10 @@ class JDParser:
         self.selected_esco_version = selected_esco_version
         self.esco_cache_dir = esco_cache_dir
         self._esco_skill_phrases = esco_skill_phrases
-        self._mcf_skills_path = mcf_skills_path
-        self._custom_skills_path = custom_skills_path
-        self._lightcast_skills_path = lightcast_skills_path
-        self._onet_skills_path = onet_skills_path
+        self._mcf_skills_path = _resolve_config_path(mcf_skills_path)
+        self._custom_skills_path = _resolve_config_path(custom_skills_path)
+        self._lightcast_skills_path = _resolve_config_path(lightcast_skills_path)
+        self._onet_skills_path = _resolve_config_path(onet_skills_path)
         self._nlp = None
         self._resolved_esco_version = None
         config = load_skill_extraction_config(skill_config_path)

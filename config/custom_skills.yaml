@@ -65,12 +65,15 @@ skills:
   - model evaluation
   - model selection
   - model monitoring
+  - model fine tuning
+  - model fine-tuning
 
   # whitelist experiment — software engineering
   - code review
   - container orchestration
   - microservices architecture
   - object oriented design
+  - object oriented programming
   - multi threaded
   - parallel processing
   - real time systems

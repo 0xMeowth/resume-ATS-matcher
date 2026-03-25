@@ -15,7 +15,7 @@ const JD_DEFAULTS = {
   rerank_top_k: 15,
   skill_strong_threshold: 0.7,
   skill_weak_threshold: 0.55,
-  whitelist_only: false,
+  whitelist_only: true,
   debug: false,
 }
 
@@ -75,6 +75,7 @@ export default function App() {
   const [jdText, setJdText] = useState('')
   const [settings, setSettings] = useState(JD_DEFAULTS)
   const [lastAnalyzedJdText, setLastAnalyzedJdText] = useState(null)
+  const [lastAnalyzedSettings, setLastAnalyzedSettings] = useState(null)
 
   // Analysis results
   const [analysisId, setAnalysisId] = useState(null)
@@ -101,8 +102,11 @@ export default function App() {
 
   const [acceptedChanges, setAcceptedChanges] = useState({})
 
-  // Steps 3–5 are stale when jdText has changed since the last analysis run
-  const coverageStale = maxStep >= 3 && lastAnalyzedJdText !== null && jdText !== lastAnalyzedJdText
+  // Steps 3–5 are stale when jdText or analysis settings have changed since the last run
+  const coverageStale = maxStep >= 3 && lastAnalyzedJdText !== null && (
+    jdText !== lastAnalyzedJdText ||
+    (lastAnalyzedSettings !== null && JSON.stringify(settings) !== JSON.stringify(lastAnalyzedSettings))
+  )
   const staleFrom = coverageStale ? 3 : null
 
   function handleUploadDone({ resume_id, low_confidence, sections }) {
@@ -127,6 +131,7 @@ export default function App() {
     setInjectionHints(injection_hints || {})
     setDebugEvents(debug_events)
     setLastAnalyzedJdText(jdText)
+    setLastAnalyzedSettings(settings)
     analyzedSectionsRef.current = JSON.parse(JSON.stringify(resumeSections))
     setAcceptedChanges({})
     setStep(3)
@@ -164,6 +169,7 @@ export default function App() {
     setJdText('')
     setSettings(JD_DEFAULTS)
     setLastAnalyzedJdText(null)
+    setLastAnalyzedSettings(null)
     setAnalysisId(null)
     setSkillMatches([])
     setInjectionHints({})

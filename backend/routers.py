@@ -111,7 +111,7 @@ class FeedbackRequest(BaseModel):
 
 class RewriteSuggestRequest(BaseModel):
     analysis_id: str
-    phrase: str
+    phrases: list[str]
     bullet_text: str
 
 
@@ -373,7 +373,7 @@ def submit_feedback(body: FeedbackRequest):
 async def rewrite_suggest(body: RewriteSuggestRequest, request: Request):
     if request.app.state.analysis_store.get(body.analysis_id) is None:
         raise HTTPException(status_code=404, detail="analysis_id not found")
-    suggested = await RewriteEngine().suggest_single(body.bullet_text, body.phrase)
+    suggested = await RewriteEngine().suggest_single(body.bullet_text, body.phrases)
     return RewriteSuggestResponse(suggested_text=suggested)
 
 

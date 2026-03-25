@@ -15,7 +15,7 @@ function AutoTextarea({ value, onChange, className }) {
     .map(l => '• ' + l)
     .join('\n')
 
-  useLayoutEffect(() => {
+  const _resize = useCallback(() => {
     const el = ref.current
     if (!el) return
     el.style.minHeight = '0'
@@ -24,10 +24,17 @@ function AutoTextarea({ value, onChange, className }) {
     const fontSize = parseFloat(getComputedStyle(el).fontSize)
     const minH = Math.round(4 * 1.6 * fontSize + 24)
     const finalH = Math.max(sh, minH)
-    const maxH = 400
     el.style.height = finalH + 'px'
-    el.style.overflowY = finalH > maxH ? 'auto' : 'hidden'
-  }, [displayValue])
+    el.style.overflowY = finalH > 400 ? 'auto' : 'hidden'
+  }, [])
+
+  useLayoutEffect(() => { _resize() }, [displayValue, _resize])
+
+  // Re-measure once fonts and layout have settled on initial mount
+  useEffect(() => {
+    const id = requestAnimationFrame(() => _resize())
+    return () => cancelAnimationFrame(id)
+  }, [_resize])
 
   const takeSnapshot = useCallback((val) => {
     if (val !== lastSnapshotRef.current) {
@@ -137,66 +144,90 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
   const flashTimerRef = useRef(null)
   const lostTimerRef = useRef(null)
 
-  // Injection targeting
-  const [activeChip, setActiveChip] = useState(null)
-  const [suggestion, setSuggestion] = useState(null)
+  // Injection targeting: multi-select chips + per-bullet suggestion cards
+  const [selectedPhrases, setSelectedPhrases] = useState(new Set())
+  const [suggestions, setSuggestions] = useState([]) // [{bulletId, bulletText, phrases, suggestedText, loading}]
 
   // Escape cancels targeting mode
   useEffect(() => {
-    if (!activeChip) return
-    const handler = (e) => { if (e.key === 'Escape') setActiveChip(null) }
+    if (!selectedPhrases.size) return
+    const handler = (e) => { if (e.key === 'Escape') setSelectedPhrases(new Set()) }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [activeChip])
+  }, [selectedPhrases])
 
   const handleChipClick = useCallback((phrase) => {
-    setActiveChip(phrase)
-    setSuggestion(null)
+    setSelectedPhrases(prev => {
+      const next = new Set(prev)
+      if (next.has(phrase)) next.delete(phrase)
+      else next.add(phrase)
+      return next
+    })
   }, [])
 
   const handleRoleClick = useCallback(async (si, ri) => {
-    if (!activeChip) return
+    if (!selectedPhrases.size) return
     const roleKey = `${si}-${ri}`
-
-    let hint = (injectionHints?.[activeChip] || {})[roleKey]
-
-    // Silently re-embed if role has been edited since analysis
-    if (hint && _isRoleStale(si, ri, resumeSections, analyzedSections)) {
-      try {
-        const role = resumeSections[si].roles[ri]
-        hint = await embedRole(analysisId, activeChip, role.bullets.map(b => ({ bullet_id: b.bullet_id, text: b.text })))
-      } catch { /* use stale hint */ }
-    }
-
     const role = resumeSections[si]?.roles[ri]
     if (!role) return
-    const bullet = (hint && role.bullets.find(b => b.bullet_id === hint.bullet_id)) || role.bullets[0]
-    if (!bullet) return
 
-    setActiveChip(null)
-    setSuggestion({ roleKey, phrase: activeChip, bulletId: bullet.bullet_id, bulletText: bullet.text, suggestedText: null, loading: true })
+    const phrases = Array.from(selectedPhrases)
+    setSelectedPhrases(new Set())
 
-    try {
-      const result = await rewriteSuggest(analysisId, activeChip, bullet.text)
-      setSuggestion(prev => prev?.roleKey === roleKey ? { ...prev, suggestedText: result.suggested_text, loading: false } : prev)
-    } catch {
-      setSuggestion(prev => prev?.roleKey === roleKey ? { ...prev, suggestedText: `Add keyword: ${activeChip}`, loading: false } : prev)
-    }
-  }, [activeChip, injectionHints, analysisId, resumeSections, analyzedSections])
+    // For each phrase, resolve its best bullet in this role
+    const stale = _isRoleStale(si, ri, resumeSections, analyzedSections)
+    const bulletMap = new Map() // bullet_id → [phrases]
 
-  const handleSuggestionAccept = useCallback((text) => {
-    if (!suggestion) return
+    await Promise.all(phrases.map(async (phrase) => {
+      let hint = (!stale && (injectionHints?.[phrase] || {})[roleKey]) || null
+      if (!hint) {
+        try {
+          hint = await embedRole(analysisId, phrase, role.bullets.map(b => ({ bullet_id: b.bullet_id, text: b.text })))
+        } catch { /* fall through */ }
+      }
+      const bullet = (hint && role.bullets.find(b => b.bullet_id === hint.bullet_id)) || role.bullets[0]
+      if (!bullet) return
+      if (!bulletMap.has(bullet.bullet_id)) bulletMap.set(bullet.bullet_id, { bullet, phrases: [] })
+      bulletMap.get(bullet.bullet_id).phrases.push(phrase)
+    }))
+
+    // Create loading cards grouped by bullet
+    const loadingCards = Array.from(bulletMap.values()).map(({ bullet, phrases: bp }) => ({
+      bulletId: bullet.bullet_id,
+      bulletText: bullet.text,
+      phrases: bp,
+      suggestedText: null,
+      loading: true,
+    }))
+    setSuggestions(loadingCards)
+
+    // Fire parallel LLM calls per distinct bullet
+    await Promise.all(loadingCards.map(async (card) => {
+      try {
+        const result = await rewriteSuggest(analysisId, card.phrases, card.bulletText)
+        setSuggestions(prev => prev.map(s =>
+          s.bulletId === card.bulletId ? { ...s, suggestedText: result.suggested_text, loading: false } : s
+        ))
+      } catch {
+        setSuggestions(prev => prev.map(s =>
+          s.bulletId === card.bulletId ? { ...s, suggestedText: `Add: ${card.phrases.join(', ')}`, loading: false } : s
+        ))
+      }
+    }))
+  }, [selectedPhrases, injectionHints, analysisId, resumeSections, analyzedSections])
+
+  const handleSuggestionAccept = useCallback((bulletId, text) => {
     onSectionsChange(prev =>
       prev.map(s => ({
         ...s,
         roles: s.roles.map(r => ({
           ...r,
-          bullets: r.bullets.map(b => b.bullet_id === suggestion.bulletId ? { ...b, text } : b),
+          bullets: r.bullets.map(b => b.bullet_id === bulletId ? { ...b, text } : b),
         })),
       }))
     )
-    setSuggestion(null)
-  }, [suggestion, onSectionsChange])
+    setSuggestions(prev => prev.filter(s => s.bulletId !== bulletId))
+  }, [onSectionsChange])
 
   const _escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -339,14 +370,30 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
 
   return (
     <div className="edit-layout">
+      <div className="keyword-panel-wrapper">
+        <KeywordPanel
+          skillMatches={skillMatches}
+          ignoredSkills={ignoredSkills}
+          onToggleIgnore={toggleIgnore}
+          resumeText={resumeText}
+          flashedPhrases={flashedPhrases}
+          lostPhrases={lostPhrases}
+          selectedPhrases={selectedPhrases}
+          onChipClick={handleChipClick}
+        />
+      </div>
+
       <div className="edit-cv">
         <div className="step">
           <h2>4) Edit Resume</h2>
 
-          {activeChip && (
+          {selectedPhrases.size > 0 && (
             <div className="targeting-banner">
-              Adding <strong>"{activeChip}"</strong> — click "+ Add here" in the role you want to modify
-              <button className="targeting-cancel" onClick={() => setActiveChip(null)}>Cancel</button>
+              {selectedPhrases.size === 1
+                ? <>Adding <strong>"{[...selectedPhrases][0]}"</strong> — click a role to target</>
+                : <>Adding <strong>{selectedPhrases.size} keywords</strong> — click a role to target</>
+              }
+              <button className="targeting-cancel" onClick={() => setSelectedPhrases(new Set())}>Cancel</button>
             </div>
           )}
 
@@ -383,20 +430,10 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
                         onChange={e => handleRoleTextChange(si, ri, e.target.value)}
                       />
                     )}
-                    {activeChip && (
+                    {selectedPhrases.size > 0 && (
                       <button className="inject-btn" onClick={() => handleRoleClick(si, ri)}>
-                        + Add "{activeChip}" here
+                        + Add {selectedPhrases.size === 1 ? `"${[...selectedPhrases][0]}"` : `${selectedPhrases.size} keywords`} here
                       </button>
-                    )}
-                    {suggestion?.roleKey === roleKey && (
-                      <SuggestionCard
-                        phrase={suggestion.phrase}
-                        originalText={suggestion.bulletText}
-                        suggestedText={suggestion.suggestedText}
-                        loading={suggestion.loading}
-                        onAccept={handleSuggestionAccept}
-                        onSkip={() => setSuggestion(null)}
-                      />
                     )}
                   </div>
                 )
@@ -410,17 +447,18 @@ export default function Step4Edit({ resumeSections, skillMatches, onSectionsChan
         </div>
       </div>
 
-      <div className="keyword-panel-wrapper">
-        <KeywordPanel
-          skillMatches={skillMatches}
-          ignoredSkills={ignoredSkills}
-          onToggleIgnore={toggleIgnore}
-          resumeText={resumeText}
-          flashedPhrases={flashedPhrases}
-          lostPhrases={lostPhrases}
-          activeChip={activeChip}
-          onChipClick={handleChipClick}
-        />
+      <div className="suggestion-panel-wrapper">
+        {suggestions.map(s => (
+          <SuggestionCard
+            key={s.bulletId}
+            phrase={s.phrases.join(', ')}
+            originalText={s.bulletText}
+            suggestedText={s.suggestedText}
+            loading={s.loading}
+            onAccept={(text) => handleSuggestionAccept(s.bulletId, text)}
+            onSkip={() => setSuggestions(prev => prev.filter(x => x.bulletId !== s.bulletId))}
+          />
+        ))}
       </div>
     </div>
   )

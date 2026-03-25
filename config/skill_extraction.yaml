@@ -222,7 +222,6 @@ single_token_allowlist:
   - genai
   # whitelist experiment — abbreviations
   - roi
-  - sme
   - kpi
   - sdlc
   - rest
@@ -237,6 +236,21 @@ single_token_allowlist:
   - gke
   - mlflow
   - elt
+  - hadoop
+  - redshift
+  - spark
+  - presto
+  - polar
+  - hive
+  - llm
+  - tensorflow
+  - pytorch
+  - huggingface
+  - n8n
+  - dify
+  - coze
+  - rag
+  - Neo4J
 
 vague_tail_nouns:
   # Renamed from vague_outcome_nouns. Rejects multi-token phrases ending in

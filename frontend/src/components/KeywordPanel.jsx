@@ -1,6 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react'
 
-export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgnore, resumeText, flashedPhrases, lostPhrases, activeChip, onChipClick }) {
+export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgnore, resumeText, flashedPhrases, lostPhrases, selectedPhrases, onChipClick }) {
   const scrollRef = useRef(null)
   const [showTopFade, setShowTopFade] = useState(false)
   const [showBottomFade, setShowBottomFade] = useState(true)
@@ -63,18 +63,23 @@ export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgno
         <p className="kp-count">{matchedCount} / {total} exact matches</p>
       </div>
 
+      {selectedPhrases?.size > 0 && (
+        <div className="kp-selection-hint">
+          {selectedPhrases.size} selected — click a role to inject
+        </div>
+      )}
       {showTopFade && <div className="kp-scroll-fade kp-scroll-fade-top" />}
       <ul className="kp-list">
         {dedupedKeywords.map((k, index) => {
           const isClickable = !k.ignored && !k.exactMatch && !!onChipClick
-          const isActive = k.phrase === activeChip
+          const isSelected = selectedPhrases?.has(k.phrase)
 
           let cls = 'kp-item'
           if (k.ignored) cls += ' kp-ignored'
           else if (k.exactMatch) cls += ' kp-matched'
           else if (k.semanticHint) cls += ' kp-semantic'
           else cls += ' kp-unmatched'
-          if (isActive) cls += ' kp-active'
+          if (isSelected) cls += ' kp-active'
           if (isClickable) cls += ' kp-clickable'
           if (flashedPhrases && flashedPhrases.has(k.phrase)) cls += ' kp-flash'
           if (lostPhrases && lostPhrases.has(k.phrase)) cls += ' kp-flash-pink'
@@ -85,11 +90,11 @@ export default function KeywordPanel({ skillMatches, ignoredSkills, onToggleIgno
               className={cls}
               style={{ animationDelay: `${index * 30}ms` }}
               title={
-                isActive ? `Targeting "${k.phrase}" — click a role` :
-                isClickable ? `Click to inject "${k.phrase}" into a bullet` :
+                isSelected ? `"${k.phrase}" selected — click again to deselect` :
+                isClickable ? `Click to select "${k.phrase}" for injection` :
                 k.semanticHint ? 'Semantically covered — add exact phrase for ATS' : undefined
               }
-              onClick={isClickable ? () => onChipClick(isActive ? null : k.phrase) : undefined}
+              onClick={isClickable ? () => onChipClick(k.phrase) : undefined}
             >
               <span className="kp-icon">
                 {k.ignored ? '—' : k.exactMatch ? '✓' : k.semanticHint ? '~' : '✗'}

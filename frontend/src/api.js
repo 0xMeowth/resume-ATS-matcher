@@ -37,11 +37,11 @@ export async function submitFeedback(analysisId, skillPhrase, bulletText, label)
   })
 }
 
-export async function rewriteSuggest(analysisId, phrase, bulletText) {
+export async function rewriteSuggest(analysisId, phrases, bulletText) {
   const res = await checkResponse(await fetch(`${BASE}/rewrite/suggest`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ analysis_id: analysisId, phrase, bullet_text: bulletText }),
+    body: JSON.stringify({ analysis_id: analysisId, phrases, bullet_text: bulletText }),
   }))
   return res.json()
 }

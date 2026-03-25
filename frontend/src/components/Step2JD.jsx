@@ -86,9 +86,9 @@ export default function Step2JD({ resumeId, lowConfidence, jdText, onJdTextChang
             </label>
 
             <label>
-              <input type="checkbox" checked={settings.whitelist_only}
-                onChange={e => onSettingChange('whitelist_only', e.target.checked)} />
-              {' '}Whitelist-only extraction (no noun chunks)
+              <input type="checkbox" checked={!settings.whitelist_only}
+                onChange={e => onSettingChange('whitelist_only', !e.target.checked)} />
+              {' '}Full pipeline (include noun chunks)
             </label>
 
             <label>
