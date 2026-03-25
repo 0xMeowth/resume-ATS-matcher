@@ -25,6 +25,9 @@ RUN uv sync --frozen --no-dev && uv pip install --no-deps -e .
 ENV HF_HOME=/app/.cache/huggingface
 ENV SENTENCE_TRANSFORMERS_HOME=/app/.cache/sentence_transformers
 
+# Pre-download models so cold starts don't hit HuggingFace at request time
+RUN uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
 EXPOSE 8000
 
 CMD ["/bin/sh", "-c", "uv run uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
