@@ -8,7 +8,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 uv sync
 uv pip install -e .          # installs ats_matcher as editable package (required for backend)
-uv run python -m spacy download en_core_web_sm
 ```
 
 **Run (Streamlit — Phase 1):**
