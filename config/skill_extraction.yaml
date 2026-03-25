@@ -35,6 +35,20 @@ light_head:
   - curiosity
   - language
   - languages
+  - tool
+  - tools
+  - toolkit
+  - toolkits
+  - kit
+  - kits
+  - platform
+  - platforms
+  - solution
+  - solutions
+  - degree
+  - opportunity
+  - employer
+  - way
 
 
 # Note: some terms below also appear in light_head — intentional.
@@ -92,10 +106,13 @@ exclude_list:
   - shift work
 
   # Application boilerplate
+  - applicant
+  - applicants
   - candidate
   - duties
   - job description
   - job requirement
+  - minimum requirements
   - mnc
   - position
   - recruiting
@@ -132,6 +149,15 @@ exclude_list:
   - diverse
   - industry
   - player
+  - track record
+  - wide range
+  - proven ability
+  - career growth
+  - professional development
+  - contact information
+  - total compensation
+  - work culture
+  - better place
 
 
 single_token_allowlist:
@@ -156,6 +182,7 @@ single_token_allowlist:
   - fp&a
   - gcp
   - git
+  - gitops
   - java
   - jira
   - kafka
@@ -186,21 +213,139 @@ single_token_allowlist:
   - langchain
   - aiops
   - chatops
+  - llm
   - llms
+  - ml
+  - dl
+  - rl
+  - rag
+  - genai
   - observability
   - monitoring
   - containerization
   - orchestration
 
-vague_outcome_nouns:
+vague_tail_nouns:
+  # Renamed from vague_outcome_nouns. Rejects multi-token phrases ending in
+  # these nouns (unless the phrase contains a "toolish" token like CI/CD).
   - deployment
   - reliability
   - collaboration
-  - communication  # also in exclude_list for single-token case; here catches multi-token phrases e.g. "stakeholder communication"
+  - communication
   - languages
   - performance
   - processes
-  - work  # catches any "X work" phrase (full time work, hybrid work, etc.) — spaCy splits "full-time" so exclude_list exact match never fires
+  - work
+  - findings
+  - tools
+  - toolkits
+  - kits
+  - teams
+  - player
+  - players
+  - individual
+  - individuals
+  - industry
+  - environment
+  - environments
+  - areas
+  - aspects
+  - practices
+  - activities
+  - solutions
+  - outcomes
+  - results
+  - capabilities
+  - initiatives
+  - opportunities
+  - range
+  - record
+  - ability
+  - period
+  - growth
+  - place
+  - purpose
+  - purposes
+  - scenarios
+  - requests
+  - process
+  - law
+  - rights
+  - notice
+  - age
+  - combination
+  - stacks
+  - problems
+  - risks
+  - culture
+  - way
+
+soft_skill_markers:
+  # Multi-word soft-skill patterns. If any marker appears as a substring
+  # of the normalized phrase, the entire phrase is rejected.
+  - driven
+  - motivated
+  - passionate
+  - proactive
+  - team player
+  - detail oriented
+  - fast paced
+  - self driven
+  - self starter
+  - collaborative
+  - hands on
+  - goal oriented
+  - results oriented
+  - people oriented
+
+academic_field_nouns:
+  # Phrases ending in these are rejected unless matched by an entity ruler
+  # (ESCO/MCF/Custom). Catches "Actuarial Sciences", "Life Sciences", etc.
+  - sciences
+  - studies
+  - mathematics
+  - statistics
+  - arts
+  - humanities
+
+light_modifier:
+  # Leading modifiers stripped from noun chunks (analogous to light_head
+  # for trailing position). "new tools" → "tools", "strong Python" → "Python".
+  - new
+  - various
+  - relevant
+  - key
+  - strong
+  - multiple
+  - appropriate
+  - suitable
+  - necessary
+  - required
+  - preferred
+  - excellent
+  - good
+  - solid
+  - proven
+  - demonstrated
+  - effective
+  - deep
+  - broad
+  - basic
+  - advanced
+  - senior
+  - junior
+  - entire
+  - global
+  - leading
+  - rare
+  - smart
+  - tough
+  - realistic
+  - dynamic
+  - massive
+  - ambitious
+  - unique
+  - authentic
 
 discourse_markers:
   - such as
