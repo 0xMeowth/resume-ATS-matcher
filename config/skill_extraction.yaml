@@ -220,10 +220,23 @@ single_token_allowlist:
   - rl
   - rag
   - genai
+  # whitelist experiment — abbreviations
+  - roi
+  - sme
+  - kpi
+  - sdlc
+  - rest
+  - graphql
+  - mqtt
+  - grpc
   - observability
   - monitoring
   - containerization
   - orchestration
+  # single-token tools (moved from custom_skills.yaml — no multi-word matching needed)
+  - gke
+  - mlflow
+  - elt
 
 vague_tail_nouns:
   # Renamed from vague_outcome_nouns. Rejects multi-token phrases ending in

@@ -6,8 +6,8 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from ats_matcher.exporter import Exporter
-from db.writer import log_export, log_feedback
+from ats_matcher.pdf_exporter import render_pdf
+from db.writer import log_feedback
 from ats_matcher.matching_engine import MatchingEngine
 from ats_matcher.phrase_ranker import rank_phrases_tfidf, select_phrases_mmr
 from ats_matcher.resume_parser import ResumeParser
@@ -27,7 +27,7 @@ class BulletOut(BaseModel):
 
 
 class RoleOut(BaseModel):
-    title: str
+    title: str | None
     bullets: list[BulletOut]
 
 
@@ -51,6 +51,7 @@ class AnalyzeSettings(BaseModel):
     skill_strong_threshold: float = 0.7
     skill_weak_threshold: float = 0.55
     debug: bool = False
+    whitelist_only: bool = False
 
 
 class AnalyzeRequest(BaseModel):
@@ -82,10 +83,23 @@ class AnalyzeResponse(BaseModel):
     debug_events: list[dict] | None = None
 
 
-class ExportRequest(BaseModel):
-    resume_id: str
-    analysis_id: str
-    accepted_changes: dict[str, str]
+class BulletIn(BaseModel):
+    bullet_id: str = ""
+    text: str
+
+
+class RoleIn(BaseModel):
+    title: str | None = None
+    bullets: list[BulletIn]
+
+
+class SectionIn(BaseModel):
+    title: str
+    roles: list[RoleIn]
+
+
+class PdfExportRequest(BaseModel):
+    sections: list[SectionIn]
 
 
 class FeedbackRequest(BaseModel):
@@ -161,7 +175,7 @@ async def analyze_jd(body: AnalyzeRequest, request: Request):
     resume_data = resume_entry.resume_data
 
     raw_text = jd_parser.load_text(body.jd_text, body.jd_url)
-    extraction = jd_parser.extract_skill_components(raw_text, debug=cfg.debug)
+    extraction = jd_parser.extract_skill_components(raw_text, debug=cfg.debug, whitelist_only=cfg.whitelist_only)
     skill_candidates = extraction["combined_skills"]
     debug_events = extraction.get("debug_events")
 
@@ -258,36 +272,20 @@ async def analyze_jd(body: AnalyzeRequest, request: Request):
     )
 
 
-# ── Export ────────────────────────────────────────────────────────────────────
+# ── PDF Export ────────────────────────────────────────────────────────────────
 
-@router.post("/export")
-def export_resume(body: ExportRequest, request: Request):
-    resume_entry = request.app.state.resume_store.get(body.resume_id)
-    if resume_entry is None:
-        raise HTTPException(status_code=404, detail="resume_id not found")
-
-    analysis_entry = request.app.state.analysis_store.get(body.analysis_id)
-    if analysis_entry is None:
-        raise HTTPException(status_code=404, detail="analysis_id not found")
-
-    docx_bytes = Exporter().apply_changes(
-        resume_entry.file_bytes,
-        resume_entry.resume_data,
-        body.accepted_changes,
-    )
-
-    log_export(
-        resume_id=body.resume_id,
-        resume_entry=resume_entry,
-        analysis_entry=analysis_entry,
-        exported_docx=docx_bytes,
-        accepted_changes=body.accepted_changes,
-    )
+@router.post("/export/pdf")
+def export_pdf(body: PdfExportRequest):
+    sections_dicts = [s.model_dump() for s in body.sections]
+    try:
+        pdf_bytes = render_pdf(sections_dicts)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}")
 
     return Response(
-        content=docx_bytes,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": 'attachment; filename="tailored_resume.docx"'},
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="tailored_resume.pdf"'},
     )
 
 

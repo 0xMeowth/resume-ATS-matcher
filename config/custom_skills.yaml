@@ -34,3 +34,117 @@ skills:
   - vector databases
   - agent orchestration
   - streaming responses
+
+  # whitelist experiment — tools & frameworks
+  - Vertex AI
+  - scikit learn
+  - Great Expectations
+  - Hugging Face
+  - ETL/ELT
+
+  # whitelist experiment — AI/LLM techniques
+  - prompt engineering
+  - fine tuning
+  - agentic workflows
+  - agentic AI
+  - generative AI
+  - large language models
+  - retrieval augmented generation
+  - function calling
+  - output parsing
+  - context window
+  - token management
+  - hallucination detection
+  - bias mitigation
+  - content filtering
+  - conversation memory
+  - multi agent systems
+  - chain of thought
+  - few shot learning
+  - zero shot learning
+  - model evaluation
+  - model selection
+  - model monitoring
+
+  # whitelist experiment — software engineering
+  - code review
+  - container orchestration
+  - microservices architecture
+  - object oriented design
+  - multi threaded
+  - parallel processing
+  - real time systems
+  - system design
+  - software lifecycle
+  - technical documentation
+  - technical mentoring
+  - deployment strategy
+  - evaluation framework
+
+  # whitelist experiment — data & analytics
+  - data lake
+  - data warehouse
+  - data pipeline
+  - data preparation
+  - data accuracy
+  - data modeling
+  - data governance framework
+  - data readiness
+  - data workflow
+  - dashboard development
+  - interactive dashboard
+  - statistical methods
+  - confidence interval
+  - attribution framework
+  - standardized metrics
+  - success metrics
+
+  # whitelist experiment — business & marketing
+  - digital marketing analytics
+  - marketing strategy
+  - marketing metrics
+  - campaign effectiveness
+  - decision making
+  - problem solving
+  - actionable insights
+  - cost optimization
+  - consultative sales
+
+  # 50-JD training set — cloud tools & CI/CD
+  - aws cloudformation
+  - azure functions
+  - azure resource manager
+  - azure service fabric
+  - cloud functions
+  - github actions
+  - gitlab ci
+  - groovy scripting
+  - low code
+
+  # 50-JD training set — ML/AI techniques
+  - access management
+  - active learning
+  - automated testing
+  - bayesian optimization
+  - foundation models
+  - machine learning algorithms
+  - machine learning infrastructure
+  - mlops methodologies
+  - mlops principles
+  - recommendation engines
+  - serverless architectures
+  - serverless computing
+  - statistical modelling
+  - time series analysis
+
+  # 50-JD training set — DevOps/engineering practices
+  - api integration
+  - api integrations
+  - auto scaling
+  - backlog grooming
+  - code reviews
+  - continuous testing
+  - data warehouses
+  - interactive dashboards
+  - non functional requirements
+  - exploratory data analysis

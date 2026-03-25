@@ -26,6 +26,20 @@ _URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"\S+@\S+\.\S+")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
+# EEO / legal boilerplate: from first occurrence of these markers to end of text
+_EEO_START_RE = re.compile(
+    r"(?:^|\n)\s*(?:"
+    r"(?:commitment\s+to\s+)?equal\s+(?:opportunity|employment)|"
+    r"\bEOE\b|"
+    r"\bEEO\b|"
+    r"we\s+are\s+(?:an?\s+)?(?:equal|affirmative)|"
+    r"affirmative\s+action|"
+    r"is\s+(?:proud\s+to\s+be\s+)?an?\s+equal|"
+    r"is\s+committed\s+to\s+working\s+with\s+the\s+broadest"
+    r")",
+    re.IGNORECASE,
+)
+
 # Common slash-compounds to keep as single tokens
 _SLASH_COMPOUNDS = [
     "CI/CD", "AI/ML", "ETL/ELT", "SaaS/PaaS", "IaaS/PaaS",
@@ -59,6 +73,8 @@ class JDParser:
         skill_config_path: Optional[str] = None,
         mcf_skills_path: str = "config/mcf_skills.json",
         custom_skills_path: str = "config/custom_skills.yaml",
+        lightcast_skills_path: str = "config/lightcast_skills.json",
+        onet_skills_path: str = "config/onet_skills.json",
     ) -> None:
         self.model_name = model_name
         self.selected_esco_version = selected_esco_version
@@ -66,6 +82,8 @@ class JDParser:
         self._esco_skill_phrases = esco_skill_phrases
         self._mcf_skills_path = mcf_skills_path
         self._custom_skills_path = custom_skills_path
+        self._lightcast_skills_path = lightcast_skills_path
+        self._onet_skills_path = onet_skills_path
         self._nlp = None
         self._resolved_esco_version = None
         config = load_skill_extraction_config(skill_config_path)
@@ -73,7 +91,10 @@ class JDParser:
         self.exclude_list = config.exclude_list
         self.single_token_allowlist = config.single_token_allowlist
         self.discourse_markers = config.discourse_markers
-        self.vague_outcome_nouns = config.vague_outcome_nouns
+        self.vague_tail_nouns = config.vague_tail_nouns
+        self.soft_skill_markers = config.soft_skill_markers
+        self.academic_field_nouns = config.academic_field_nouns
+        self.light_modifier = config.light_modifier
         self._leading_discourse_marker_regex = self._compile_leading_discourse_regex(
             self.discourse_markers
         )
@@ -90,6 +111,8 @@ class JDParser:
             self._install_slash_compound_tokenizer_rules()
             self._install_esco_entity_ruler()
             self._install_mcf_entity_ruler()
+            self._install_lightcast_entity_ruler()
+            self._install_onet_entity_ruler()
             self._install_custom_entity_ruler()
         return self._nlp
 
@@ -107,7 +130,7 @@ class JDParser:
         return components["combined_skills"]
 
     def extract_skill_components(
-        self, jd_text: str, debug: bool = False
+        self, jd_text: str, debug: bool = False, whitelist_only: bool = False
     ) -> Dict[str, Any]:
         """Extract skill candidates from ESCO entities and cleaned noun chunks.
 
@@ -125,8 +148,14 @@ class JDParser:
             jd_text = self._preprocess_text(jd_text)
             self._current_jd_text = jd_text
             doc = self.nlp(jd_text)
+            # Collect entity-matched phrases for academic field exemption
+            self._entity_matched_phrases = {
+                normalize_text(ent.text)
+                for ent in doc.ents
+                if ent.label_ in self._SKILL_ENTITY_LABELS
+            }
             esco_skills = self._extract_esco_entities(doc)
-            noun_chunk_skills = self._extract_clean_noun_chunks(doc)
+            noun_chunk_skills = [] if whitelist_only else self._extract_clean_noun_chunks(doc)
             single_token_skills = self._extract_allowlisted_single_tokens(doc)
             combined = esco_skills + noun_chunk_skills + single_token_skills
             combined = dedupe_preserve_order(combined)
@@ -157,6 +186,16 @@ class JDParser:
         text = _URL_RE.sub("", text)
         text = _EMAIL_RE.sub("", text)
         self._extract_company_stopwords(text)
+        # Strip EEO / legal boilerplate from first marker to end of text
+        eeo_match = _EEO_START_RE.search(text)
+        if eeo_match:
+            text = text[: eeo_match.start()]
+        # Normalize intra-word hyphens to spaces so hyphenated JD forms
+        # (e.g. "problem-solving", "low-code", "real-time") match the spaced
+        # whitelist entries ("problem solving", "low code", "real time").
+        # Only replaces hyphens between letters; leaves "C/C++", "CI/CD",
+        # bullet-point hyphens, and numeric ranges untouched.
+        text = re.sub(r"(?<=[A-Za-z])-(?=[A-Za-z])", " ", text)
         text = re.sub(r"[ \t]+", " ", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
@@ -234,6 +273,53 @@ class JDParser:
         ruler.add_patterns(build_entity_ruler_patterns(phrases, label="MCF_SKILL"))
         logger.info("Loaded %d MCF skill patterns", len(phrases))
 
+    def _install_lightcast_entity_ruler(self) -> None:
+        """Load Lightcast Open Skills (ST1 only) as entity ruler patterns."""
+        path = Path(self._lightcast_skills_path)
+        if not path.exists():
+            return
+        if "lightcast_skill_ruler" in self._nlp.pipe_names:
+            return
+        phrases = json.loads(path.read_text(encoding="utf-8"))
+        if not phrases:
+            return
+        last = next(
+            (n for n in ("mcf_skill_ruler", "esco_skill_ruler") if n in self._nlp.pipe_names),
+            None,
+        )
+        ruler = self._nlp.add_pipe(
+            "entity_ruler",
+            name="lightcast_skill_ruler",
+            config={"phrase_matcher_attr": "LOWER", "overwrite_ents": False},
+            after=last,
+        )
+        ruler.add_patterns(build_entity_ruler_patterns(phrases, label="LIGHTCAST_SKILL"))
+        logger.info("Loaded %d Lightcast skill patterns", len(phrases))
+
+    def _install_onet_entity_ruler(self) -> None:
+        """Load O*NET Technology Skills as entity ruler patterns."""
+        path = Path(self._onet_skills_path)
+        if not path.exists():
+            return
+        if "onet_skill_ruler" in self._nlp.pipe_names:
+            return
+        phrases = json.loads(path.read_text(encoding="utf-8"))
+        if not phrases:
+            return
+        last = next(
+            (n for n in ("lightcast_skill_ruler", "mcf_skill_ruler", "esco_skill_ruler")
+             if n in self._nlp.pipe_names),
+            None,
+        )
+        ruler = self._nlp.add_pipe(
+            "entity_ruler",
+            name="onet_skill_ruler",
+            config={"phrase_matcher_attr": "LOWER", "overwrite_ents": False},
+            after=last,
+        )
+        ruler.add_patterns(build_entity_ruler_patterns(phrases, label="ONET_SKILL"))
+        logger.info("Loaded %d O*NET skill patterns", len(phrases))
+
     def _install_custom_entity_ruler(self) -> None:
         """Load custom skill dictionary and add as entity ruler patterns."""
         custom_path = Path(self._custom_skills_path)
@@ -247,21 +333,22 @@ class JDParser:
         if not phrases:
             return
 
-        last_ruler = (
-            "mcf_skill_ruler" if "mcf_skill_ruler" in self._nlp.pipe_names
-            else "esco_skill_ruler" if "esco_skill_ruler" in self._nlp.pipe_names
-            else None
+        last_ruler = next(
+            (n for n in ("onet_skill_ruler", "lightcast_skill_ruler",
+                         "mcf_skill_ruler", "esco_skill_ruler")
+             if n in self._nlp.pipe_names),
+            None,
         )
         ruler = self._nlp.add_pipe(
             "entity_ruler",
             name="custom_skill_ruler",
-            config={"phrase_matcher_attr": "LOWER", "overwrite_ents": False},
+            config={"phrase_matcher_attr": "LOWER", "overwrite_ents": True},
             after=last_ruler,
         )
         ruler.add_patterns(build_entity_ruler_patterns(phrases, label="CUSTOM_SKILL"))
         logger.info("Loaded %d custom skill patterns", len(phrases))
 
-    _SKILL_ENTITY_LABELS = {"ESCO_SKILL", "MCF_SKILL", "CUSTOM_SKILL"}
+    _SKILL_ENTITY_LABELS = {"ESCO_SKILL", "MCF_SKILL", "LIGHTCAST_SKILL", "ONET_SKILL", "CUSTOM_SKILL"}
 
     def _extract_esco_entities(self, doc) -> List[str]:
         phrases: List[str] = []
@@ -352,9 +439,13 @@ class JDParser:
         for segment in self._split_tokens_on_hard_break(tokens):
             if not segment:
                 continue
-            candidate = self._clean_noun_chunk_segment(segment, chunk.root)
-            if candidate:
-                candidates.append(candidate)
+            # Split on conjunctions ("and", "or", "&") to avoid runaway phrases
+            for sub_segment in self._split_tokens_on_conjunction(segment):
+                if not sub_segment:
+                    continue
+                candidate = self._clean_noun_chunk_segment(sub_segment, chunk.root)
+                if candidate:
+                    candidates.append(candidate)
         return candidates
 
     def _clean_noun_chunk_segment(self, tokens: List, root) -> Optional[str]:
@@ -369,7 +460,22 @@ class JDParser:
         else:
             tokens = self._trim_determiners(tokens)
 
+        # Strip trailing light-head tokens (catches stacked generics like
+        # "Life Sciences domain experience" → root "experience" stripped above,
+        # then "domain" stripped here)
+        while tokens and normalize_text(tokens[-1].lemma_) in self.light_head:
+            tokens = tokens[:-1]
+
+        # Strip vague leading modifiers ("new", "various", "strong", etc.)
+        while tokens and normalize_text(tokens[0].lemma_) in self.light_modifier:
+            tokens = tokens[1:]
+
         if not tokens:
+            return None
+
+        # Reject adjective-only fragments (no NOUN/PROPN) — these arise from
+        # conjunction splitting, e.g. "Transactional operational and ..." → "Transactional operational"
+        if len(tokens) > 1 and not any(t.pos_ in ("NOUN", "PROPN") for t in tokens):
             return None
 
         surface = " ".join(token.text for token in tokens)
@@ -391,6 +497,23 @@ class JDParser:
             ):
                 segments.append(current)
                 current = []
+        if current:
+            segments.append(current)
+        return segments
+
+    @staticmethod
+    def _split_tokens_on_conjunction(tokens: List) -> List[List]:
+        """Split token list on 'and', 'or', '&' to avoid runaway noun chunks."""
+        _CONJ = {"and", "or", "&"}
+        segments: List[List] = []
+        current: List = []
+        for token in tokens:
+            if token.text.lower() in _CONJ:
+                if current:
+                    segments.append(current)
+                current = []
+            else:
+                current.append(token)
         if current:
             segments.append(current)
         return segments
@@ -443,13 +566,25 @@ class JDParser:
         if company_sw and all(token in company_sw or token in self.exclude_list for token in tokens):
             return "company_name"
 
-        if len(tokens) > 1 and tokens[-1] in self.vague_outcome_nouns:
+        if len(tokens) > 1 and tokens[-1] in self.vague_tail_nouns:
             has_toolish = any(
                 TOOLISH_TOKEN_REGEX.match(tok)
                 for tok in candidate.split()
             )
             if not has_toolish:
-                return "vague_head_noun"
+                return "vague_tail_noun"
+
+        # Soft-skill phrase detection
+        normalized_flat = normalized.replace("-", " ").replace("  ", " ")
+        for marker in self.soft_skill_markers:
+            if marker in normalized_flat:
+                return "soft_skill_phrase"
+
+        # Academic field filter (exempt entity-ruler matches)
+        entity_phrases = getattr(self, "_entity_matched_phrases", set())
+        if len(tokens) > 1 and tokens[-1] in self.academic_field_nouns:
+            if normalized not in entity_phrases:
+                return "academic_field"
 
         if len(tokens) < 2 and not self._allow_single_token(candidate):
             return "single_token_not_allowlisted"

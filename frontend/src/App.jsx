@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import Step1Upload from './components/Step1Upload'
 import Step2JD from './components/Step2JD'
 import Step3Coverage from './components/Step3Coverage'
@@ -15,6 +15,7 @@ const JD_DEFAULTS = {
   rerank_top_k: 15,
   skill_strong_threshold: 0.7,
   skill_weak_threshold: 0.55,
+  whitelist_only: false,
   debug: false,
 }
 
@@ -52,6 +53,18 @@ function StepIndicator({ current, maxStep, staleFrom, onStepClick }) {
 export default function App() {
   const [step, setStep] = useState(1)
   const [maxStep, setMaxStep] = useState(1)
+
+  // Theme
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem('theme')
+    if (saved) return saved === 'dark'
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  })
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+    localStorage.setItem('theme', dark ? 'dark' : 'light')
+  }, [dark])
+  const toggleTheme = useCallback(() => setDark(d => !d), [])
 
   // Step 1 state
   const [resumeFile, setResumeFile] = useState(null)
@@ -165,8 +178,13 @@ export default function App() {
     <div className={step === 4 ? 'app app-wide' : 'app'}>
       <div className="page-header-sticky" ref={pageHeaderRef}>
         <header>
-          <h1>Resume ATS Matcher</h1>
-          <p className="subtitle">Human-in-the-loop resume tailoring</p>
+          <div>
+            <h1>Resume ATS Matcher</h1>
+            <p className="subtitle">Human-in-the-loop resume tailoring</p>
+          </div>
+          <button className="theme-toggle" onClick={toggleTheme} title={dark ? 'Light mode' : 'Dark mode'}>
+            {dark ? '\u2600\uFE0F' : '\uD83C\uDF19'}
+          </button>
         </header>
 
         <StepIndicator
@@ -212,6 +230,7 @@ export default function App() {
             resumeId={resumeId}
             analysisId={analysisId}
             acceptedChanges={acceptedChanges}
+            resumeSections={resumeSections}
             onReset={handleReset}
           />
         )}
