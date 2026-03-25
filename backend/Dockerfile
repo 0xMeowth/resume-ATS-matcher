@@ -17,6 +17,7 @@ COPY pyproject.toml uv.lock ./
 COPY src/ ./src/
 COPY config/ ./config/
 COPY backend/ ./backend/
+COPY db/ ./db/
 
 RUN uv sync --frozen --no-dev && uv pip install --no-deps -e .
 
